@@ -712,6 +712,41 @@ void lt_timepicker_set_kind(lt_timepicker *tp, lt_timepicker_kind k);
 void lt_timepicker_draw(const lt_timepicker *tp, lt_canvas *c, lt_rect r, const lt_theme *t, bool focused);
 lt_wres lt_timepicker_event(lt_timepicker *tp, lt_rect r, const lt_event *ev);
 
+/* ---- file picker: a directory browser (filepicker.c) ---------------------------------------------------------------------------------------
+ * Shows one directory: a path row, the entries (directories first, then files, each sorted without regard to case; a ".." row leads up unless at
+ * the root), a type-to-filter row. Keys: Up/Down/PgUp/PgDn/Home/End move; Enter or Right opens a directory / chooses a file; Left, or Backspace
+ * on an empty filter, goes up; printable keys edit the filter (case-insensitive substring; ".." is always kept); '.' on an empty filter shows or
+ * hides dot files; Esc clears the filter; F5 re-reads the directory. Mouse: click moves the cursor, double click = Enter, wheel and scrollbar scroll.
+ * Directories are tracked by canonical path (realpath): a symlink that points back up the tree never makes the path grow, and "up" is the real
+ * parent. A directory that cannot be read is still entered: an error row says why and ".." leads out. Names are drawn with control bytes as '?'
+ * and cut with an ellipsis. All entries are read into one arena (100000 files are fine); the filter is a linear pass.
+ * Events return CHANGED (cursor, filter or directory changed) or ACTIVATE (a file was chosen: lt_filepicker_selected has its absolute path and
+ * the on_select callback, if any, has already run). Below 4 rows only the entries are drawn. */
+typedef struct lt_filepicker lt_filepicker;
+typedef void (*lt_filepicker_fn)(const char *path, void *user);
+lt_filepicker *lt_filepicker_new(const char *dir);                                     /* NULL or "" = the current directory; falls back to it when dir cannot be entered */
+void lt_filepicker_free(lt_filepicker *f);
+bool lt_filepicker_set_dir(lt_filepicker *f, const char *dir);                         /* false (error row set, old directory kept) when dir does not exist or is not a directory */
+const char *lt_filepicker_dir(const lt_filepicker *f);                                 /* canonical absolute path shown */
+void lt_filepicker_reload(lt_filepicker *f);                                           /* re-reads the directory, keeps the cursor on the same name; also F5 */
+void lt_filepicker_set_extensions(lt_filepicker *f, const char *exts);                 /* "c,h" or ".md;txt" (comma, semicolon or space, dot optional, any case): only those files; directories always show. NULL or "" = all */
+void lt_filepicker_set_hidden(lt_filepicker *f, bool show);                            /* dot files, default off */
+bool lt_filepicker_hidden(const lt_filepicker *f);
+void lt_filepicker_set_query(lt_filepicker *f, const char *text);                      /* the filter row's text */
+const char *lt_filepicker_query(const lt_filepicker *f);
+void lt_filepicker_on_select(lt_filepicker *f, lt_filepicker_fn fn, void *user);       /* called with the absolute path of a chosen file */
+const char *lt_filepicker_selected(const lt_filepicker *f);                            /* the last chosen file, NULL if none yet */
+const char *lt_filepicker_error(const lt_filepicker *f);                               /* why the last read / change of directory failed, NULL when it did not */
+int lt_filepicker_count(const lt_filepicker *f);                                       /* rows shown (after the filters), the ".." row included */
+int lt_filepicker_total(const lt_filepicker *f);                                       /* entries in the directory, ".." not counted */
+const char *lt_filepicker_name(const lt_filepicker *f, int i);                         /* name of shown row i, NULL when out of range */
+bool lt_filepicker_is_dir(const lt_filepicker *f, int i);
+int lt_filepicker_cursor(const lt_filepicker *f);                                      /* shown row under the cursor, -1 when none */
+void lt_filepicker_set_cursor(lt_filepicker *f, int i);
+int lt_filepicker_entry_at(const lt_filepicker *f, lt_rect r, int x, int y);           /* shown row drawn at a canvas cell, -1 if none */
+void lt_filepicker_draw(lt_filepicker *f, lt_canvas *c, lt_rect r, const lt_theme *t, bool focused);
+lt_wres lt_filepicker_event(lt_filepicker *f, lt_rect r, const lt_event *ev);
+
 /* volumebar: a level bar (horizontal, or vertical with set_vertical) with a label ("spk", "mic"), a percent / MUTE text, keys (Left/Right or
  * Down/Up or -/+ step, PgUp/PgDn x5, Home/End, m mutes) and mouse (click/drag sets, wheel steps, click on the text mutes). The audio backend
  * stays outside: hand it get/set callbacks (any may be NULL - the widget then keeps that value itself). Levels are 0..max (max 1.0 default).
