@@ -32,6 +32,7 @@ To use it like an stb file, copy only the widget files you use plus `src/core/`.
 make                                   # liblazytui.a, examples/demo, examples/TUItemplate
 make test                              # every tests/test_*.c under ASAN + UBSAN (leak check for test_robust)
 make install PREFIX=~/.local           # include/lazytui.h + liblazytui.a
+./install                              # same into ~/.local plus `lazytui-demo` and the example sources (no root, PREFIX= changes it)
 ./run                                  # build, test, start the demo
 examples/demo --snapshot 110 330 0     # one frame as text (W H tab [theme]); tab 0 = basic, 1 = extras
 ```
