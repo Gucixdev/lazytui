@@ -43,6 +43,7 @@ typedef struct {
 	lt_nodeeditor *ne;
 	lt_gradientpicker *gp;
 	lt_colorpicker *cpk;
+	lt_filepicker *fpick;
 	lt_timer *timer;
 	lt_datepicker *datepick;
 	lt_datepicker *datepick_compact;
@@ -178,6 +179,10 @@ static const char *SPEC =
 	"          custom id=gradpick type=gradpick\n"
 	"        panel title=\"colour picker (feeds the gradient stop above, r resets)\"\n"
 	"          custom id=colorpick type=colorpick\n"
+	"      panel title=\"file picker (type to filter, Enter, Backspace up, . dot files)\" size=12\n"
+	"        custom id=filepick type=filepick\n"
+	"      panel title=\"chosen file\" size=3\n"
+	"        text bind=picked_file\n"
 	"      panel title=\"step sequencer (click a step, or arrows+Enter; r clears it)\" size=7\n"
 	"        custom id=seq type=seq animated=1\n"
 	"  keybar hints=\"wheel:scroll;Tab:mode/focus;S-Tab:focus;f1/f2:tab;+/-:refresh rate;ctrl-t:theme;esc:quit\" size=2\n";
@@ -723,6 +728,9 @@ static lt_wres event_dtcell(lt_app *a, const char *id, lt_rect r, const lt_event
 	}
 	return LT_W_IGNORED;
 }
+static void draw_filepick(lt_app *a, const char *id, lt_canvas *c, lt_rect r, const lt_theme *t, bool focused, void *ctx) { (void)a; (void)id; S *s = ctx; lt_filepicker_draw(s->fpick, c, r, t, focused); }
+static lt_wres event_filepick(lt_app *a, const char *id, lt_rect r, const lt_event *ev, void *ctx) { (void)a; (void)id; S *s = ctx; return lt_filepicker_event(s->fpick, r, ev); }
+static void on_file_chosen(const char *path, void *user) { S *s = user; lt_app_set_text(s->app, "picked_file", path); }
 static void draw_seq(lt_app *a, const char *id, lt_canvas *c, lt_rect r, const lt_theme *t, bool focused, void *ctx)
 {
 	(void)a; (void)id;
@@ -842,6 +850,9 @@ static void init_data(S *s)
 	lt_gradientpicker_add_stop(s->gp, 0.5, LT_RGB(0, 255, 65));
 
 	s->cpk = lt_colorpicker_new(LT_RGB(0, 255, 65));
+	s->fpick = lt_filepicker_new(NULL);                                        /* the directory the demo was started in */
+	lt_filepicker_on_select(s->fpick, on_file_chosen, s);
+	lt_app_set_text(s->app, "picked_file", "nothing chosen yet");
 
 	s->timer = lt_timer_new();
 	lt_timer_set_countdown(s->timer, 60.0);
@@ -907,12 +918,13 @@ static void register_all(S *s)
 	lt_app_custom(a, "nodedit", draw_nodedit, event_nodedit, s);
 	lt_app_custom(a, "gradpick", draw_gradpick, event_gradpick, s);
 	lt_app_custom(a, "colorpick", draw_colorpick, event_colorpick, s);
+	lt_app_custom(a, "filepick", draw_filepick, event_filepick, s);
 	lt_app_custom(a, "dtcell", draw_dtcell, event_dtcell, s);
 	lt_app_custom(a, "seq", draw_seq, event_seq, s);
 	lt_app_on(a, "app", "*", on_app, s);
 	lt_app_on(a, "*", "change", on_widget, s);
 	lt_app_on(a, "*", "activate", on_widget, s);
-	lt_app_key(a, "ctrl-t", "theme"); lt_app_key(a, "ctrl-p", "pause"); lt_app_key(a, "ctrl-r", "refresh"); lt_app_key(a, "enter", "refresh");
+	lt_app_key(a, "ctrl-t", "theme"); lt_app_key(a, "ctrl-p", "pause"); lt_app_key(a, "ctrl-r", "refresh");            /* Enter is not global: a focused widget (the file picker) needs it */
 	lt_app_key(a, "+", "faster"); lt_app_key(a, "=", "faster"); lt_app_key(a, "-", "slower"); lt_app_key(a, "_", "slower");
 	lt_app_key(a, "f1", "page0"); lt_app_key(a, "f2", "page1"); lt_app_key(a, "alt-1", "page0"); lt_app_key(a, "alt-2", "page1");
 	lt_app_key(a, "esc", "escape"); lt_app_key(a, "ctrl-q", "quit");
@@ -937,6 +949,14 @@ int main(int argc, char **argv)
 	update_info(&s);
 	refresh(&s, false);
 	run_search(&s);
+	if (getenv("LT_FOCUS")) {                                                  /* start with a widget focused (the pty test uses it); layout first, or the page cannot scroll to it */
+		lt_canvas *warm = lt_canvas_new(120, 50, lt_caps_detect());
+		lt_theme wt = theme_of(0);
+		lt_app_set(s.app, "tab", 1);
+		lt_app_render(s.app, warm, &wt);
+		lt_app_focus(s.app, getenv("LT_FOCUS"));
+		lt_canvas_free(warm);
+	}
 	if (argc > 1 && !strcmp(argv[1], "--snapshot")) {
 		lt_caps caps = lt_caps_detect();
 		int w = argc > 2 ? atoi(argv[2]) : 110, h = argc > 3 ? atoi(argv[3]) : 34;

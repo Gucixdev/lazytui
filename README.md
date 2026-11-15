@@ -56,7 +56,7 @@ Keys/mouse are for the interactive ones; "-" = display only.
 | clock, timer | datetime/ | digital/big/analog clock; countdown/stopwatch | space, r, arrows, wheel | tested (clock) |
 | datepicker, timepicker | picker/ | calendar; 24h/12h/spinner time | arrows, Enter, click, wheel | tested (editors) |
 | colorpicker, gradientpicker | picker/ | colour and gradient editors | arrows, click, drag | tested (editors) |
-| filepicker | picker/filepicker.c | directory browser: dirs first, type-to-filter row, extension filter, hidden files, symlink-loop safe, error row for unreadable dirs | arrows, PgUp/Dn, Home/End, Enter, Left/Backspace up, `.` hidden, Esc; click, double click, wheel | tested (filepicker, robust) |
+| filepicker | picker/filepicker.c | directory browser: dirs first, type-to-filter row, extension filter, hidden files, symlink-loop safe, error row for unreadable dirs | arrows, PgUp/Dn, Home/End, Enter, Left/Backspace up, `.` hidden, Esc; click, double click, wheel | tested (filepicker, robust, pty: `make pty`) |
 | heatgrid, heatgrid_dither | fancy/ | GitHub-style grid, dithered | - | demo |
 | radar, webchart, tagcloud, rain, scramble | fancy/ | radar sweep, n-axis web chart, tag cloud, matrix rain, text decode | - | demo |
 | pixeleditor, nodeeditor | fancy/ | sprite editor, node graph editor | tools/keys, click, drag | tested (editors) |

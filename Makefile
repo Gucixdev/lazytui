@@ -1,6 +1,7 @@
 # lazytui - C library on plain ANSI escapes.
 #   make            liblazytui.a + examples/demo + examples/TUItemplate
 #   make test       every tests/test_*.c, built with ASAN+UBSAN, run
+#   make pty        examples/demo driven through a pty (tests/pty_filepicker.py)
 #   make install    headers + library under PREFIX (default /usr/local)
 CC ?= cc
 CFLAGS ?= -O2
@@ -49,6 +50,10 @@ test: $(SANOBJ)
 
 asan: test
 
+# the demo in a real pty: focus the file picker, type, choose a file (needs python3)
+pty: examples/demo
+	python3 tests/pty_filepicker.py
+
 install: liblazytui.a
 	install -d $(DESTDIR)$(PREFIX)/include $(DESTDIR)$(PREFIX)/lib
 	install -m 644 include/lazytui.h $(DESTDIR)$(PREFIX)/include/
@@ -57,4 +62,4 @@ install: liblazytui.a
 clean:
 	rm -rf build; rm -f $(OBJ) liblazytui.a $(TESTS) examples/demo examples/TUItemplate
 
-.PHONY: all test asan install clean
+.PHONY: all test asan pty install clean
