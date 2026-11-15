@@ -165,6 +165,24 @@ int main(void)
 	free(bbd);
 	lt_buttonbar_free(bb);
 
+	/* a bar too narrow for every button: the active one (set from a hotkey, cursor untouched) must still be on screen */
+	{
+		const char *nl[4] = {"alpha", "beta", "gamma", "delta"};
+		lt_buttonbar *nb = lt_buttonbar_new(nl, 4);
+		lt_rect nr = {0, 0, 16, 1};
+		lt_buttonbar_set_active(nb, 3);
+		lt_canvas_clear(c, th.s[LT_T_TEXT]);
+		lt_buttonbar_draw(nb, c, nr, &th, false);
+		char *nd = lt_canvas_dump(c);
+		CHECK(strstr(nd, "delta"), "a narrow bar scrolls to the active button");
+		free(nd);
+		lt_buttonbar_set_active(nb, 3);   /* the app repeats it every frame: arrow browsing must not be reset */
+		lt_buttonbar_set_cursor(nb, 1);
+		lt_buttonbar_set_active(nb, 3);
+		CHECK(lt_buttonbar_cursor(nb) == 1, "setting the same active button again leaves the cursor");
+		lt_buttonbar_free(nb);
+	}
+
 	/* tabs */
 	const char *tabnames[3] = {"one", "two", "three"};
 	lt_tabs *tabs = lt_tabs_new(tabnames, 3, LT_SIDE_TOP);

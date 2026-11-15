@@ -32,7 +32,14 @@ void lt_buttonbar_free(lt_buttonbar *b)
 void lt_buttonbar_set_prompt(lt_buttonbar *b, const char *p) { free(b->prompt); b->prompt = p && *p ? strdup(p) : NULL; }
 int lt_buttonbar_cursor(const lt_buttonbar *b) { return b->cursor; }
 void lt_buttonbar_set_cursor(lt_buttonbar *b, int i) { if (i >= 0 && i < b->n) b->cursor = i; }
-void lt_buttonbar_set_active(lt_buttonbar *b, int i) { b->active = i >= 0 && i < b->n ? i : -1; }
+/* a changed active button pulls the cursor (and so the visible window) onto it: switching tabs from a hotkey must not leave the
+ * new tab scrolled out of a narrow bar. The same value again (the app sets it every frame) leaves the cursor alone. */
+void lt_buttonbar_set_active(lt_buttonbar *b, int i)
+{
+	int a = i >= 0 && i < b->n ? i : -1;
+	if (a != b->active && a >= 0) b->cursor = a;
+	b->active = a;
+}
 int lt_buttonbar_count(const lt_buttonbar *b) { return b->n; }
 
 static int bw_of(const lt_buttonbar *b, int i) { return lt_utf8_width(b->label[i]) + 2; }
