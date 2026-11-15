@@ -159,6 +159,31 @@ int main(void)
 	CHECK(!strcmp(lt_app_focused(a3), ""), "...but a click that lands on nothing focusable still clears focus");
 	lt_app_free(a3);
 
+	/* the loader builds the whole tree in one arena: every error path must free it (LeakSanitizer), report the line, and leave the app untouched */
+	lt_app *a4 = lt_app_new();
+	CHECK(lt_app_load(a4, "col\n  text text=\"first\" size=1\n", err, sizeof err), err);
+	static const struct { const char *spec, *msg; } bad[] = {
+		{"", "the spec is empty"}, {"# only a comment\n", "the spec is empty"},
+		{"col\n\ttext\n", "line 2: tabs are not allowed"}, {"col\n  frobnicate\n", "line 2: unknown widget kind 'frobnicate'"},
+		{"col\n  text text=\"open\n", "line 2: unterminated quote in attribute 'text'"}, {"col\ncol\n", "line 2: a second top-level node"},
+		{"col\n  text\n    text\n", "line 3: 'text' cannot have children"}, {"scroll\n  text size=fill\n", "line 2: children of a scroll need a fixed size"},
+		{"col\n  text size=bogus\n", "line 2: bad size 'bogus'"},
+	};
+	for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+		CHECK(!lt_app_load(a4, bad[i].spec, err, sizeof err), "a bad spec is refused");
+		CHECK(!strncmp(err, bad[i].msg, strlen(bad[i].msg)), err);
+	}
+	char *d4 = render_dump(a4, 20, 3);
+	CHECK(strstr(d4, "first"), "a refused load leaves the previously loaded tree in place");
+	free(d4);
+	/* a line longer than the loader's stack buffer, an escaped quote, a zonebar and a keybar (tables built in the arena), then a reload */
+	char big[1400];
+	snprintf(big, sizeof big, "col\n  text text=\"%*s\\\"end\" size=1\n  zonebar zones=\"a=x:ok,b=y:warn\" size=1\n  keybar hints=\"q:quit;?:help\" size=1\n", 700, "");
+	CHECK(lt_app_load(a4, big, err, sizeof err), err);
+	free(render_dump(a4, 40, 4));
+	for (int i = 0; i < 20; i++) CHECK(lt_app_load(a4, SPEC, err, sizeof err), err);
+	lt_app_free(a4);
+
 	printf(fails ? "app: %d failed\n" : "app: ok\n", fails);
 	lt_app_free(a);
 	return fails != 0;
