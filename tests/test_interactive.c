@@ -183,6 +183,30 @@ int main(void)
 		lt_buttonbar_free(nb);
 	}
 
+	/* the ">" and "<" marks of a narrow bar scroll the window, and it stays there until the cursor moves */
+	{
+		const char *nl[4] = {"alpha", "beta", "gamma", "delta"};
+		lt_buttonbar *nb = lt_buttonbar_new(nl, 4);
+		lt_rect nr = {0, 0, 16, 1};
+		lt_canvas_clear(c, th.s[LT_T_TEXT]);
+		lt_buttonbar_draw(nb, c, nr, &th, false);
+		e = mouse(LT_K_CLICK, 15, 0);
+		lt_buttonbar_event(nb, nr, &e);
+		lt_canvas_clear(c, th.s[LT_T_TEXT]);
+		lt_buttonbar_draw(nb, c, nr, &th, false);
+		char *sd = lt_canvas_dump(c);
+		CHECK(!strstr(sd, "alpha") && strstr(sd, "beta"), "clicking the right mark scrolls the window one button");
+		free(sd);
+		e = key(LT_K_RIGHT);
+		lt_buttonbar_event(nb, nr, &e);
+		lt_canvas_clear(c, th.s[LT_T_TEXT]);
+		lt_buttonbar_draw(nb, c, nr, &th, false);
+		sd = lt_canvas_dump(c);
+		CHECK(strstr(sd, "beta"), "a cursor key brings the cursor button back into view");
+		free(sd);
+		lt_buttonbar_free(nb);
+	}
+
 	/* tabs */
 	const char *tabnames[3] = {"one", "two", "three"};
 	lt_tabs *tabs = lt_tabs_new(tabnames, 3, LT_SIDE_TOP);

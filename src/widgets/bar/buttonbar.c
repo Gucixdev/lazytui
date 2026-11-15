@@ -6,6 +6,7 @@ struct lt_buttonbar {
 	char **label; int n;
 	char *prompt;
 	int cursor, active, first;
+	bool scrolled;                             /* the window was moved by the "<" ">" marks: it stays put until the cursor moves */
 	int *bx, *bw, nvis_from, nvis_to;          /* screen x and width of each drawn button, [from, to) */
 	int hit_left, hit_right;                   /* x of the "<" / ">" marks, -1 when absent */
 	lt_rect drawn;
@@ -31,13 +32,13 @@ void lt_buttonbar_free(lt_buttonbar *b)
 }
 void lt_buttonbar_set_prompt(lt_buttonbar *b, const char *p) { free(b->prompt); b->prompt = p && *p ? strdup(p) : NULL; }
 int lt_buttonbar_cursor(const lt_buttonbar *b) { return b->cursor; }
-void lt_buttonbar_set_cursor(lt_buttonbar *b, int i) { if (i >= 0 && i < b->n) b->cursor = i; }
+void lt_buttonbar_set_cursor(lt_buttonbar *b, int i) { if (i >= 0 && i < b->n) { if (i != b->cursor) b->scrolled = false; b->cursor = i; } }
 /* a changed active button pulls the cursor (and so the visible window) onto it: switching tabs from a hotkey must not leave the
  * new tab scrolled out of a narrow bar. The same value again (the app sets it every frame) leaves the cursor alone. */
 void lt_buttonbar_set_active(lt_buttonbar *b, int i)
 {
 	int a = i >= 0 && i < b->n ? i : -1;
-	if (a != b->active && a >= 0) b->cursor = a;
+	if (a != b->active && a >= 0) { b->cursor = a; b->scrolled = false; }
 	b->active = a;
 }
 int lt_buttonbar_count(const lt_buttonbar *b) { return b->n; }
@@ -59,8 +60,8 @@ void lt_buttonbar_draw(lt_buttonbar *b, lt_canvas *c, lt_rect r, const lt_theme 
 	b->cursor = lt_clampi(b->cursor, 0, b->n - 1);
 	/* the window starts at `first`, moved so that the cursor fits between the "<" and ">" marks */
 	b->first = lt_clampi(b->first, 0, b->n - 1);
-	if (b->cursor < b->first) b->first = b->cursor;
-	for (;;) {
+	if (!b->scrolled && b->cursor < b->first) b->first = b->cursor;
+	for (; !b->scrolled;) {
 		int used = b->first > 0 ? 2 : 0, last = b->first;
 		for (int i = b->first; i < b->n; i++) { int w = bw_of(b, i) + 1; if (x + used + w > right - 2 && i > b->first) break; used += w; last = i; }
 		if (b->cursor <= last || b->first >= b->cursor) break;
@@ -93,13 +94,14 @@ lt_wres lt_buttonbar_event(lt_buttonbar *b, lt_rect r, const lt_event *ev)
 		if (base == LT_K_WHEEL_UP || base == LT_K_WHEEL_DOWN) {
 			if (!lt_in(r, ev->x, ev->y)) return LT_W_IGNORED;
 			b->cursor = lt_clampi(b->cursor + (base == LT_K_WHEEL_UP ? -1 : 1), 0, b->n - 1);
+			if (b->cursor != old) b->scrolled = false;
 			return b->cursor != old ? LT_W_CHANGED : LT_W_HANDLED;
 		}
 		if (base != LT_K_CLICK || !lt_in(r, ev->x, ev->y)) return LT_W_IGNORED;
-		if (ev->x == b->hit_left && b->hit_left >= 0) { b->first = lt_clampi(b->first - 1, 0, b->n - 1); return LT_W_HANDLED; }
-		if (ev->x == b->hit_right && b->hit_right >= 0) { b->first = lt_clampi(b->first + 1, 0, b->n - 1); return LT_W_HANDLED; }
+		if (ev->x == b->hit_left && b->hit_left >= 0) { b->first = lt_clampi(b->first - 1, 0, b->n - 1); b->scrolled = true; return LT_W_HANDLED; }
+		if (ev->x == b->hit_right && b->hit_right >= 0) { b->first = lt_clampi(b->first + 1, 0, b->n - 1); b->scrolled = true; return LT_W_HANDLED; }
 		for (int i = b->nvis_from; i < b->nvis_to; i++)
-			if (ev->x >= b->bx[i] && ev->x < b->bx[i] + b->bw[i]) { b->cursor = i; return LT_W_ACTIVATE; }
+			if (ev->x >= b->bx[i] && ev->x < b->bx[i] + b->bw[i]) { b->cursor = i; b->scrolled = false; return LT_W_ACTIVATE; }
 		return LT_W_HANDLED;
 	}
 	if (ev->kind != LT_EV_KEY || (mods & ~LT_MOD_SHIFT)) return LT_W_IGNORED;
@@ -111,5 +113,6 @@ lt_wres lt_buttonbar_event(lt_buttonbar *b, lt_rect r, const lt_event *ev)
 	case LT_K_ENTER: return LT_W_ACTIVATE;
 	default: return LT_W_IGNORED;
 	}
+	if (b->cursor != old) b->scrolled = false;
 	return b->cursor != old ? LT_W_CHANGED : LT_W_HANDLED;
 }
