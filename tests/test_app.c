@@ -90,7 +90,7 @@ int main(void)
 	lt_app_set(a, "tab", 0);
 
 	/* mouse: focus the search bar by clicking it, type, the model follows and the handler runs */
-	render_dump(a, 60, 20);                                                     /* a render is needed so widgets have screen rects */
+	free(render_dump(a, 60, 20));                                                     /* a render is needed so widgets have screen rects */
 	lt_rect qrect;
 	CHECK(lt_app_rect(a, "q", &qrect), "a drawn widget's rectangle is queryable");
 	lt_event e = mouse(LT_K_CLICK, qrect.x + 2, qrect.y);
@@ -135,7 +135,7 @@ int main(void)
 	lt_app *a2 = lt_app_new();
 	CHECK(lt_app_load(a2, "col\n  custom id=w type=probe size=fill\n", err, sizeof err), err);
 	lt_app_custom(a2, "probe", draw_cb, event_cb, NULL);
-	render_dump(a2, 20, 10);
+	free(render_dump(a2, 20, 10));
 	CHECK(custom_draws > 0, "a custom widget's draw callback runs during render");
 	lt_app_focus(a2, "w");
 	lt_event ce = mouse(LT_K_CLICK, 5, 5);
@@ -150,7 +150,7 @@ int main(void)
 	lt_app *a3 = lt_app_new();
 	CHECK(lt_app_load(a3, "col\n  panel title=\"p\" size=10\n    custom id=w2 type=ignorer\n", err, sizeof err), err);
 	lt_app_custom(a3, "ignorer", draw_cb, event_ignore_cb, NULL);
-	render_dump(a3, 40, 20);
+	free(render_dump(a3, 40, 20));
 	lt_event c1 = mouse(LT_K_CLICK, 5, 3);                                      /* inside w2's own area */
 	lt_app_dispatch(a3, &c1, &UNI, 0);
 	CHECK(!strcmp(lt_app_focused(a3), "w2"), "a click on a focusable widget's own area focuses it, even when that widget's handler ignores the click");
