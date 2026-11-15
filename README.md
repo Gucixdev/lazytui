@@ -15,7 +15,7 @@ src/core/io/             canvas, tty, input, layout, solver, arena, app (the spe
 src/widgets/bar/         one-row bars: progress, ring, pacman, zone, pie, bar chart, button, key, search, text, volume
 src/widgets/basic/       everyday: list, tree, dropdown, table (layout), panel, frame, gauge, graph, linechart, histogram, piechart, search
 src/widgets/datetime/    clock, timer
-src/widgets/picker/      colorpicker, datepicker, gradientpicker, timepicker
+src/widgets/picker/      colorpicker, datepicker, filepicker, gradientpicker, timepicker
 src/widgets/fancy/       heatgrid(+dither), nodeeditor, pixeleditor, radar, rain, scramble, sequencer, tagcloud, webchart
 src/widgets/map/         worldmap, globe, minimap (+ world data and rasteriser: world, maplabels, mapview)
 src/widgets/monitor/     system-monitor widgets ported from gtop: histgraph, segbar, corebars, ratepanel, proctable
@@ -56,6 +56,7 @@ Keys/mouse are for the interactive ones; "-" = display only.
 | clock, timer | datetime/ | digital/big/analog clock; countdown/stopwatch | space, r, arrows, wheel | tested (clock) |
 | datepicker, timepicker | picker/ | calendar; 24h/12h/spinner time | arrows, Enter, click, wheel | tested (editors) |
 | colorpicker, gradientpicker | picker/ | colour and gradient editors | arrows, click, drag | tested (editors) |
+| filepicker | picker/filepicker.c | directory browser: dirs first, type-to-filter row, extension filter, hidden files, symlink-loop safe, error row for unreadable dirs | arrows, PgUp/Dn, Home/End, Enter, Left/Backspace up, `.` hidden, Esc; click, double click, wheel | tested (filepicker, robust) |
 | heatgrid, heatgrid_dither | fancy/ | GitHub-style grid, dithered | - | demo |
 | radar, webchart, tagcloud, rain, scramble | fancy/ | radar sweep, n-axis web chart, tag cloud, matrix rain, text decode | - | demo |
 | pixeleditor, nodeeditor | fancy/ | sprite editor, node graph editor | tools/keys, click, drag | tested (editors) |
@@ -68,4 +69,4 @@ Keys/mouse are for the interactive ones; "-" = display only.
 | **ratepanel** | monitor/ratepanel.c | disk/net rate rows: human rate, peak, auto-scaled history | - | tested (monitor) |
 | **proctable** | monitor/proctable.c | sortable process table with tree rows | arrows, PgUp/Dn, s/r sort, Right/Left/Enter expand; header click sorts, click, wheel | tested (monitor) |
 
-Core pieces with their own tests: canvas, layout (Cassowary solver), anim, app (spec language), kinds, controls, robust (fuzz).
+Core pieces with their own tests: canvas, layout (Cassowary solver), anim, app (spec language), kinds, controls, robust (fuzz, also covers filepicker).

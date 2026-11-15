@@ -128,6 +128,23 @@ for this widget), HANDLED, CHANGED, ACTIVATE (enter / double click), TOGGLE (tre
 - `lt_scrollbar`: thumb size proportional, click/drag mapping.
 The tty layer reports drag (button held) and release events for this.
 
+## File picker
+
+`lt_filepicker` (src/widgets/picker/filepicker.c) browses one directory at a time: path row, entries, type-to-filter row (below 4 rows only the
+entries). The directory is read once into a flat entry array whose names live in one `lt_arena` (reset on every load, so 100000 entries cost
+one array and a few arena chunks); `shown` is an index array rebuilt by a linear pass when the filter, the extension list or the hidden flag
+changes, which is what keeps 100000 entries interactive. Order: directories first, then files, each case-insensitive (byte order breaks ties).
+A ".." row leads up (absent at the root) and is exempt from every filter; the cursor lands on the directory just left when going up.
+
+Directories are always held as `realpath` results. A symlink that points at an ancestor or at its own directory therefore resolves to
+the real directory and the path never grows; "up" is the lexical parent of a path that has no links in it, so it is the real parent. A link whose
+target cannot be resolved (self-link, dangling) is a plain entry. A directory that fails to open is still entered: the error row says why
+(`strerror`), ".." is the only entry, and the error clears on the next successful load. `set_dir` on a path that does not exist or is not a
+directory refuses and keeps the old directory. Typing goes to the filter (`lt_input`, so the editing keys and paste work); `.` toggles hidden files
+only while the filter is empty, Backspace goes up only while it is empty. Names are shown with control bytes as `?`, cut with an ellipsis at the
+column edge, the path row keeps its tail. Tests: `tests/test_filepicker.c` (a temp tree with loops, an unreadable directory, long names, and
+100000 files) and the random-event run in `tests/test_robust.c`.
+
 ## Keys
 
 The tty layer asks for the kitty protocol with flags 31 (disambiguate, event types, alternate keys, all keys, text). A key arrives as text when
@@ -175,7 +192,7 @@ dropdown (it switches the theme), searchbar (filters the list). `demo --snapshot
 ## Robustness
 
 `make asan` runs every test under ASan + UBSan (+ float-cast-overflow); `test_robust` also feeds 200k random key/mouse events to
-list, tree, dropdown and searchbar with degenerate rectangles, and draws every widget at every
+list, tree, dropdown and searchbar with degenerate rectangles, plus 60k key/mouse/paste events to a filepicker on a throwaway tree (links, an unreadable directory, odd names), and draws every widget at every
 canvas size 1..70 x 1..12 with nonsense rectangles (negative, outside), NaN/inf values, three capability sets, and
 solves a nested layout for sizes -2..300. Nothing may crash, overflow or leak.
 
