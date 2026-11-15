@@ -37,9 +37,9 @@ examples/TUItemplate: examples/TUItemplate.c liblazytui.a
 bench: tests/bench
 	./tests/bench
 
-# sanitized copy of the library (built once into build/san), then every test linked against it
-SANOBJ := $(patsubst src/%.c,build/san/%.o,$(SRC))
-build/san/%.o: src/%.c $(HDR)
+# sanitized copy of the library (built once into out/san), then every test linked against it
+SANOBJ := $(patsubst src/%.c,out/san/%.o,$(SRC))
+out/san/%.o: src/%.c $(HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(SAN) $(CFLAGS) $(INC) -c -o $@ $<
 
@@ -47,8 +47,8 @@ build/san/%.o: src/%.c $(HDR)
 test: $(SANOBJ)
 	@for t in tests/test_*.c; do \
 		echo "== $$t"; \
-		$(CC) $(SAN) $(CFLAGS) -o build/san/t $$t $(SANOBJ) -lm || exit 1; \
-		ASAN_OPTIONS=detect_leaks=1 build/san/t || exit 1; \
+		$(CC) $(SAN) $(CFLAGS) -o out/san/t $$t $(SANOBJ) -lm || exit 1; \
+		ASAN_OPTIONS=detect_leaks=1 out/san/t || exit 1; \
 	done
 
 asan: test
@@ -63,6 +63,6 @@ install: liblazytui.a
 	install -m 644 liblazytui.a $(DESTDIR)$(PREFIX)/lib/
 
 clean:
-	rm -rf build; rm -f $(OBJ) liblazytui.a $(TESTS) examples/demo examples/TUItemplate
+	rm -rf out; rm -f $(OBJ) liblazytui.a $(TESTS) examples/demo examples/TUItemplate
 
 .PHONY: all test asan pty install clean

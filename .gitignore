@@ -19,7 +19,7 @@ tests/test_sequencer
 tests/test_solver
 tests/test_widgets
 examples/TUItemplate
-build/
+out/
 
 .lake/
 node_modules/
