@@ -47,12 +47,11 @@ double app_attr_num(const anode *n, const char *k, double d) { const char *v = a
 #define attr_or app_attr_or
 #define attr_num app_attr_num
 
-static void node_free(anode *n)
+/* the spec tree (nodes, kind/id/attribute strings, child and attribute arrays, the zone/item/hint tables) lives in a->ar and is released with it;
+ * node_destroy only runs what has its own lifetime: the kind's destroy, the widget objects, the scroll layout, last_text (set at run time) */
+static void node_destroy(anode *n)
 {
-	for (int i = 0; i < n->nkid; i++) node_free(n->kid[i]);
-	free(n->kid); free(n->kind); free(n->id);
-	for (int i = 0; i < n->nattr; i++) { free(n->ak[i]); free(n->av[i]); }
-	free(n->ak); free(n->av);
+	for (int i = 0; i < n->nkid; i++) node_destroy(n->kid[i]);
 	if (n->ops && n->ops->destroy) n->ops->destroy(n);
 	lt_buttonbar_free(n->bb);
 	if (n->has_in) lt_input_free(&n->in);
@@ -61,20 +60,15 @@ static void node_free(anode *n)
 	lt_tree_free(n->tree);
 	lt_dropdown_free(n->dd);
 	lt_keybar_free(n->keys);
-	free(n->hint_ids); free(n->zones);
-	for (int i = 0; i < n->nzones; i++) free(n->zkeys[i]);
-	free(n->zkeys);
-	for (int i = 0; i < n->nitems; i++) free(n->items[i]);
-	free(n->items);
 	if (n->own) lt_layout_free(n->own);
-	free(n);
 }
 
 lt_app *lt_app_new(void) { return calloc(1, sizeof(lt_app)); }
 void lt_app_free(lt_app *a)
 {
 	if (!a) return;
-	if (a->root) node_free(a->root);
+	if (a->root) node_destroy(a->root);
+	lt_arena_free(a->ar);
 	lt_layout_free(a->lay);
 	for (int i = 0; i < a->nm; i++) { free(a->m[i].key); free(a->m[i].s); }
 	free(a->m);
@@ -90,31 +84,52 @@ void lt_app_free(lt_app *a)
 }
 
 /* ------------------------------------------------------------------ the parser */
-static char *dupn(const char *s, size_t n) { char *p = malloc(n + 1); memcpy(p, s, n); p[n] = 0; return p; }
+/* Everything the parser builds comes from one arena, a->ar; a NULL from it is the only failure path ("out of memory", reported through err). */
+#define OOM(err, errn) (snprintf(err, errn, "out of memory"), false)
+static char *dupn(lt_arena *ar, const char *s, size_t n) { char *p = lt_arena_alloc(ar, n + 1); if (p) { memcpy(p, s, n); p[n] = 0; } return p; }
 
-static void add_attr(anode *n, char *k, char *v)
+/* room for one more element in an arena array that doubles from 4: returns the (possibly moved) array, NULL when the arena is out of memory */
+static void *room(lt_arena *ar, void *old, int n, int *cap, size_t sz)
 {
-	n->ak = realloc(n->ak, (size_t)(n->nattr + 1) * sizeof(char *));
-	n->av = realloc(n->av, (size_t)(n->nattr + 1) * sizeof(char *));
-	n->ak[n->nattr] = k; n->av[n->nattr] = v; n->nattr++;
+	if (n < *cap) return old;
+	int nc = *cap ? *cap * 2 : 4;
+	void *p = lt_arena_alloc(ar, (size_t)nc * sz);
+	if (!p) return NULL;
+	if (n) memcpy(p, old, (size_t)n * sz);
+	*cap = nc;
+	return p;
 }
-static void add_kid(anode *p, anode *k)
+
+static bool add_attr(lt_arena *ar, anode *n, char *k, char *v)
 {
-	p->kid = realloc(p->kid, (size_t)(p->nkid + 1) * sizeof(anode *));
+	int cap = n->capattr, cap2 = n->capattr;
+	char **nk = room(ar, n->ak, n->nattr, &cap, sizeof *nk), **nv = room(ar, n->av, n->nattr, &cap2, sizeof *nv);
+	if (!nk || !nv) return false;
+	n->ak = nk; n->av = nv; n->capattr = cap;
+	n->ak[n->nattr] = k; n->av[n->nattr] = v; n->nattr++;
+	return true;
+}
+static bool add_kid(lt_arena *ar, anode *p, anode *k)
+{
+	anode **kid = room(ar, p->kid, p->nkid, &p->capkid, sizeof *kid);
+	if (!kid) return false;
+	p->kid = kid;
 	p->kid[p->nkid++] = k;
 	k->parent = p;
+	return true;
 }
 
 static const char *KINDS[] = {"row", "col", "stack", "panel", "scroll", "pages", "spacer", "text", "textbar", "progressbar", "ringbar", "zonebar", "pacmanbar",
                               "searchbar", "buttonbar", "dropdown", "list", "tree", "keybar", "rain", "custom", NULL};
 static bool is_container(const char *k) { return !strcmp(k, "row") || !strcmp(k, "col") || !strcmp(k, "stack") || !strcmp(k, "panel") || !strcmp(k, "pages") || !strcmp(k, "scroll") || (app_kind_ops(k) && app_kind_ops(k)->container); }
 
-static bool parse_line(const char *p, anode *n, char *err, size_t errn, int line)
+static bool parse_line(lt_arena *ar, const char *p, anode *n, char *err, size_t errn, int line)
 {
 	while (*p == ' ') p++;
 	const char *s = p;
 	while (*p && !isspace((unsigned char)*p)) p++;
-	n->kind = dupn(s, (size_t)(p - s));
+	n->kind = dupn(ar, s, (size_t)(p - s));
+	if (!n->kind) return OOM(err, errn);
 	bool known = false;
 	for (int i = 0; KINDS[i]; i++) if (!strcmp(KINDS[i], n->kind)) known = true;
 	if (app_kind_ops(n->kind)) known = true;
@@ -124,25 +139,29 @@ static bool parse_line(const char *p, anode *n, char *err, size_t errn, int line
 		if (!*p || *p == '#') break;
 		const char *ks = p;
 		while (*p && *p != '=' && !isspace((unsigned char)*p)) p++;
-		char *k = dupn(ks, (size_t)(p - ks)), *v;
+		char *k = dupn(ar, ks, (size_t)(p - ks)), *v;
+		if (!k) return OOM(err, errn);
 		if (*p == '=') {
 			p++;
 			if (*p == '"') {
 				p++;
-				size_t cap = 32, len = 0;
-				v = malloc(cap);
+				size_t len = 0;                                        /* measure first (a backslash keeps the next character), then fill: one exact allocation */
+				for (const char *q = p; *q && *q != '"'; q++) { if (*q == '\\' && q[1]) q++; len++; }
+				v = lt_arena_alloc(ar, len + 1);
+				if (!v) return OOM(err, errn);
+				len = 0;
 				while (*p && *p != '"') {
 					if (*p == '\\' && p[1]) p++;
-					if (len + 2 > cap) { cap *= 2; v = realloc(v, cap); }
 					v[len++] = *p++;
 				}
-				if (*p != '"') { snprintf(err, errn, "line %d: unterminated quote in attribute '%s'", line, k); free(k); free(v); return false; }
+				if (*p != '"') { snprintf(err, errn, "line %d: unterminated quote in attribute '%s'", line, k); return false; }
 				p++;
 				v[len] = 0;
-			} else { const char *vs = p; while (*p && !isspace((unsigned char)*p)) p++; v = dupn(vs, (size_t)(p - vs)); }
-		} else v = strdup("1");
-		if (!strcmp(k, "id")) { free(n->id); n->id = v; free(k); continue; }
-		add_attr(n, k, v);
+			} else { const char *vs = p; while (*p && !isspace((unsigned char)*p)) p++; v = dupn(ar, vs, (size_t)(p - vs)); }
+		} else v = dupn(ar, "1", 1);
+		if (!v) return OOM(err, errn);
+		if (!strcmp(k, "id")) { n->id = v; continue; }
+		if (!add_attr(ar, n, k, v)) return OOM(err, errn);
 	}
 	return true;
 }
@@ -217,15 +236,20 @@ static void collect(lt_app *a, anode *n)
 	for (int i = 0; i < n->nkid; i++) collect(a, n->kid[i]);
 }
 
-static char **split_csv(const char *s, int *n)
+/* the comma-separated items of s: one array plus its strings from the arena. *n = the count; -1 = out of memory */
+static char **split_csv(lt_arena *ar, const char *s, int *n)
 {
-	char **out = NULL;
+	int cnt = 0;
+	for (const char *p = s; p && *p;) { const char *e = strchr(p, ','); cnt++; if (!e) break; p = e + 1; }
 	*n = 0;
+	if (!cnt) return NULL;
+	char **out = lt_arena_alloc(ar, (size_t)cnt * sizeof *out);
+	if (!out) { *n = -1; return NULL; }
 	for (const char *p = s; p && *p;) {
 		const char *e = strchr(p, ',');
 		size_t l = e ? (size_t)(e - p) : strlen(p);
-		out = realloc(out, (size_t)(*n + 1) * sizeof(char *));
-		out[(*n)++] = dupn(p, l);
+		if (!(out[*n] = dupn(ar, p, l))) { *n = -1; return NULL; }
+		(*n)++;
 		if (!e) break;
 		p = e + 1;
 	}
@@ -240,19 +264,19 @@ static lt_slot slot_of(const char *s)
 	return LT_T_TEXT;
 }
 
-static void instantiate(lt_app *a, anode *n)
+static bool instantiate(lt_app *a, anode *n)
 {
 	const char *k = n->kind;
+	lt_arena *ar = a->ar;
 	n->ops = app_kind_ops(k);
 	if (n->ops && n->ops->init) n->ops->init(a, n);
-	if (n->ops) { for (int i = 0; i < n->nkid; i++) instantiate(a, n->kid[i]); return; }
+	if (n->ops) { for (int i = 0; i < n->nkid; i++) if (!instantiate(a, n->kid[i])) return false; return true; }
 	if (!strcmp(k, "searchbar")) { lt_input_init(&n->in); n->has_in = true; }
 	else if (!strcmp(k, "buttonbar")) {
 		int cnt;
-		char **it = split_csv(attr_or(n, "items", ""), &cnt);
+		char **it = split_csv(ar, attr_or(n, "items", ""), &cnt);
+		if (cnt < 0) return false;
 		n->bb = lt_buttonbar_new((const char *const *)it, cnt);
-		for (int i = 0; i < cnt; i++) free(it[i]);
-		free(it);
 		const char *p = attr(n, "prompt");
 		if (p) lt_buttonbar_set_prompt(n->bb, p);
 	} else if (!strcmp(k, "dropdown") && attr(n, "tree")) {
@@ -260,56 +284,56 @@ static void instantiate(lt_app *a, anode *n)
 		n->dd = lt_dropdown_from_tree(n->tree);
 	} else if (!strcmp(k, "dropdown")) {
 		int cnt;
-		n->items = split_csv(attr_or(n, "items", ""), &cnt);
+		n->items = split_csv(ar, attr_or(n, "items", ""), &cnt);
+		if (cnt < 0) return false;
 		n->nitems = cnt;
 		n->dd = lt_dropdown_new((const char *const *)n->items, cnt);
 	} else if (!strcmp(k, "list")) { n->list = lt_list_new(); lt_list_set_multi(n->list, attr(n, "multi") != NULL); }
 	else if (!strcmp(k, "tree")) n->tree = lt_tree_new();
 	else if (!strcmp(k, "keybar")) {
 		lt_hint hints[32];
-		char *copy = strdup(attr_or(n, "hints", "")), *save = NULL;
+		char *copy = lt_arena_strdup(ar, attr_or(n, "hints", "")), *save = NULL;
 		int cnt = 0;
-		n->hint_ids = calloc(32, sizeof(int));
+		n->hint_ids = lt_arena_calloc(ar, 32 * sizeof(int));
+		if (!copy || !n->hint_ids) return false;
 		for (char *t = strtok_r(copy, ";", &save); t && cnt < 32; t = strtok_r(NULL, ";", &save)) {
 			char *c1 = strchr(t, ':');
 			if (!c1) continue;
 			*c1 = 0;
-			hints[cnt] = (lt_hint){strdup(t), strdup(c1 + 1), cnt + 1};
+			hints[cnt] = (lt_hint){t, c1 + 1, cnt + 1};            /* lt_keybar_new copies the strings */
 			cnt++;
 		}
 		n->keys = lt_keybar_new(hints, cnt);
 		n->nhints = cnt;
-		for (int i = 0; i < cnt; i++) { free((char *)hints[i].key); free((char *)hints[i].label); }
-		free(copy);
 	} else if (!strcmp(k, "zonebar")) {
-		char *copy = strdup(attr_or(n, "zones", "")), *save = NULL;
+		const char *zs = attr_or(n, "zones", "");
+		size_t max = 1;                                            /* at most one zone per comma, plus one */
+		for (const char *c = zs; (c = strchr(c, ',')); c++) max++;
+		char *copy = lt_arena_strdup(ar, zs), *save = NULL;
+		n->zones = lt_arena_alloc(ar, max * sizeof *n->zones);
+		n->zkeys = lt_arena_alloc(ar, max * sizeof *n->zkeys);
+		n->items = lt_arena_alloc(ar, max * sizeof *n->items);
+		if (!copy || !n->zones || !n->zkeys || !n->items) { n->zones = NULL; n->zkeys = n->items = NULL; return false; }
 		for (char *t = strtok_r(copy, ",", &save); t; t = strtok_r(NULL, ",", &save)) {
 			char *eq = strchr(t, '='), *co = eq ? strchr(eq, ':') : NULL;
 			if (!eq) continue;
 			*eq = 0;
 			if (co) *co = 0;
-			n->zones = realloc(n->zones, (size_t)(n->nzones + 1) * sizeof(lt_zone));
-			n->zkeys = realloc(n->zkeys, (size_t)(n->nzones + 1) * sizeof(char *));
-			n->zones[n->nzones] = (lt_zone){NULL, 1, co ? slot_of(co + 1) : LT_T_OK};
-			n->zones[n->nzones].label = NULL;
-			n->zkeys[n->nzones] = strdup(eq + 1);
-			/* the label is kept in the item list so the pointer stays valid */
-			n->items = realloc(n->items, (size_t)(n->nitems + 1) * sizeof(char *));
-			n->items[n->nitems] = strdup(t);
-			n->nitems++;
+			n->zones[n->nzones] = (lt_zone){t, 1, co ? slot_of(co + 1) : LT_T_OK};   /* the label points into the arena copy */
+			n->zkeys[n->nzones] = eq + 1;
+			n->items[n->nitems++] = t;
 			n->nzones++;
 		}
-		for (int i = 0; i < n->nzones; i++) n->zones[i].label = n->items[i];
-		free(copy);
 	}
-	(void)a;
-	for (int i = 0; i < n->nkid; i++) instantiate(a, n->kid[i]);
+	for (int i = 0; i < n->nkid; i++) if (!instantiate(a, n->kid[i])) return false;
+	return true;
 }
 
-static void assign_ids(anode *n, int *counter)
+static bool assign_ids(lt_arena *ar, anode *n, int *counter)
 {
-	if (!n->id) { char b[32]; snprintf(b, sizeof b, "_%d", (*counter)++); n->id = strdup(b); }
-	for (int i = 0; i < n->nkid; i++) assign_ids(n->kid[i], counter);
+	if (!n->id) { char b[32]; snprintf(b, sizeof b, "_%d", (*counter)++); if (!(n->id = lt_arena_strdup(ar, b))) return false; }
+	for (int i = 0; i < n->nkid; i++) if (!assign_ids(ar, n->kid[i], counter)) return false;
+	return true;
 }
 
 bool lt_app_load(lt_app *a, const char *spec, char *err, size_t errn)
@@ -317,45 +341,58 @@ bool lt_app_load(lt_app *a, const char *spec, char *err, size_t errn)
 	char dummy[160];
 	if (!err) { err = dummy; errn = sizeof dummy; }
 	err[0] = 0;
+	lt_arena *ar = lt_arena_new(16384);                    /* the whole spec tree; on any failure below it is freed in one call and `a` is untouched */
+	if (!ar) return OOM(err, errn);
 	anode *stack[64] = {0};
 	int indents[64] = {0}, depth = 0;
 	anode *root = NULL;
 	int line = 0;
+	char sbuf[512];
 	for (const char *p = spec; *p;) {
 		const char *e = strchr(p, '\n');
 		size_t len = e ? (size_t)(e - p) : strlen(p);
-		char *ln = dupn(p, len);
+		char *ln = len < sizeof sbuf ? sbuf : malloc(len + 1);      /* a line copy is only heap for lines of 512+ characters */
+		if (!ln) { lt_arena_free(ar); return OOM(err, errn); }
+		memcpy(ln, p, len); ln[len] = 0;
 		p += len + (e ? 1 : 0);
 		line++;
 		int ind = 0;
 		while (ln[ind] == ' ') ind++;
-		if (!ln[ind] || ln[ind] == '#') { free(ln); continue; }
-		if (ln[ind] == '\t') { snprintf(err, errn, "line %d: tabs are not allowed, indent with spaces", line); free(ln); if (root) node_free(root); return false; }
-		anode *n = calloc(1, sizeof *n);
-		n->line = line;
-		if (!parse_line(ln, n, err, errn, line)) { free(ln); node_free(n); if (root) node_free(root); return false; }
-		free(ln);
+		bool skip = !ln[ind] || ln[ind] == '#', tab = ln[ind] == '\t', ok = true;
+		anode *n = NULL;
+		if (!skip && !tab) {
+			n = lt_arena_calloc(ar, sizeof *n);
+			if (!n) ok = OOM(err, errn);
+			else { n->line = line; ok = parse_line(ar, ln, n, err, errn, line); }
+		}
+		if (ln != sbuf) free(ln);
+		if (skip) continue;
+		if (tab) { snprintf(err, errn, "line %d: tabs are not allowed, indent with spaces", line); ok = false; }
+		if (!ok) { lt_arena_free(ar); return false; }
 		while (depth > 0 && indents[depth - 1] >= ind) depth--;
 		if (depth == 0) {
-			if (root) { snprintf(err, errn, "line %d: a second top-level node (the spec has one root)", line); node_free(n); node_free(root); return false; }
+			if (root) { snprintf(err, errn, "line %d: a second top-level node (the spec has one root)", line); lt_arena_free(ar); return false; }
 			root = n;
 		} else {
-			if (!is_container(stack[depth - 1]->kind)) { snprintf(err, errn, "line %d: '%s' cannot have children", line, stack[depth - 1]->kind); node_free(n); node_free(root); return false; }
-			add_kid(stack[depth - 1], n);
+			if (!is_container(stack[depth - 1]->kind)) { snprintf(err, errn, "line %d: '%s' cannot have children", line, stack[depth - 1]->kind); lt_arena_free(ar); return false; }
+			if (!add_kid(ar, stack[depth - 1], n)) { lt_arena_free(ar); return OOM(err, errn); }
 		}
 		if (depth < 63) { stack[depth] = n; indents[depth] = ind; depth++; }
 	}
-	if (!root) { snprintf(err, errn, "the spec is empty"); return false; }
+	if (!root) { lt_arena_free(ar); snprintf(err, errn, "the spec is empty"); return false; }
 	int counter = 0;
-	assign_ids(root, &counter);
+	if (!assign_ids(ar, root, &counter)) { lt_arena_free(ar); return OOM(err, errn); }
 	lt_layout *lay = lt_layout_new();
 	lt_node *rn = lt_layout_root(lay, !strcmp(root->kind, "row") ? LT_ROW : !strcmp(root->kind, "stack") || !strcmp(root->kind, "pages") ? LT_STACK : LT_COL);
-	if (!build(a, root, lay, rn, NULL, err, errn, false)) { lt_layout_free(lay); node_free(root); return false; }
-	if (a->root) node_free(a->root);
+	if (!build(a, root, lay, rn, NULL, err, errn, false)) { lt_layout_free(lay); node_destroy(root); lt_arena_free(ar); return false; }
+	lt_arena *old = a->ar;                                  /* instantiate needs a->ar; the old tree is released only once the new one is complete */
+	a->ar = ar;
+	if (!instantiate(a, root)) { a->ar = old; lt_layout_free(lay); node_destroy(root); lt_arena_free(ar); return OOM(err, errn); }
+	if (a->root) node_destroy(a->root);
+	lt_arena_free(old);
 	lt_layout_free(a->lay);
 	free(a->foc); a->foc = NULL; a->nfoc = 0; a->focus = NULL;
 	a->root = root; a->lay = lay;
-	instantiate(a, root);
 	collect(a, root);
 	return true;
 }

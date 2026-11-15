@@ -8,8 +8,8 @@ typedef struct anode anode;
 struct anode {
 	char *kind, *id;
 	int line;
-	char **ak, **av; int nattr;
-	anode *parent, **kid; int nkid;
+	char **ak, **av; int nattr, capattr;     /* all of the spec tree (this node, its strings and arrays) lives in lt_app.ar */
+	anode *parent, **kid; int nkid, capkid;
 	lt_node *ln;                     /* the layout node (in the layout that owns this subtree) */
 	lt_layout *own;                  /* scroll: the layout of its content */
 	int content_h;
@@ -36,6 +36,7 @@ typedef struct { double every, next; char *event; } timer;
 typedef struct { char *type; lt_custom_draw draw; lt_custom_event event; void *ctx; } custom;
 
 struct lt_app {
+	lt_arena *ar;                    /* owns the spec tree of the last successful lt_app_load; freed in one call on reload / lt_app_free */
 	anode *root;
 	lt_layout *lay;
 	mval *m; int nm, capm;
