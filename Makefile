@@ -1,5 +1,6 @@
 # lazytui - C library on plain ANSI escapes.
 #   make            liblazytui.a + examples/demo + examples/TUItemplate
+#   make bench      milliseconds per draw and per frame (tests/bench.c), by hand
 #   make test       every tests/test_*.c, built with ASAN+UBSAN, run
 #   make pty        examples/demo driven through a pty (tests/pty_filepicker.py)
 #   make install    headers + library under PREFIX (default /usr/local)
@@ -32,6 +33,9 @@ examples/demo: examples/demo.c liblazytui.a
 
 examples/TUItemplate: examples/TUItemplate.c liblazytui.a
 	$(CC) $(CFLAGS) -o $@ $< liblazytui.a -lm
+
+bench: tests/bench
+	./tests/bench
 
 # sanitized copy of the library (built once into build/san), then every test linked against it
 SANOBJ := $(patsubst src/%.c,build/san/%.o,$(SRC))

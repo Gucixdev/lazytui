@@ -71,3 +71,17 @@ Keys/mouse are for the interactive ones; "-" = display only.
 | **proctable** | monitor/proctable.c | sortable process table with tree rows | arrows, PgUp/Dn, s/r sort, Right/Left/Enter expand; header click sorts, click, wheel | tested (monitor) |
 
 Core pieces with their own tests: canvas, layout (Cassowary solver), anim, app (spec language), kinds, controls, robust (fuzz, also covers filepicker).
+
+## Speed
+
+`make bench` (by hand, not part of `make test`) prints milliseconds per draw. One run on this machine, `-O2`, 110x36 canvas, so read it as an order of magnitude:
+
+| what | ms |
+|---|---|
+| list of 100k rows, draw + cursor step | 0.07 |
+| whole frame (list scroll + diff against the previous frame) | 0.09 |
+| list of 100k rows, filter by substring | 9.6 |
+| canvas clear + dump | 0.01 |
+| world map, climate colours | 1.6 |
+| globe 54x24 | 12 (the slowest widget) |
+

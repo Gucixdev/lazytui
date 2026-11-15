@@ -33,5 +33,17 @@ int main(void)
 	lt_rain(C, r, &TH, 1.5, 7);
 	size_t n;
 	BENCH("canvas diff (rain vs blank)", 200, { char *s = lt_canvas_diff(C, P, 0, &n); free(s); });
+	/* a list of 100k rows: one draw of the visible window as the cursor walks, and a filter pass over every row */
+	lt_list *L = lt_list_new();
+	char lab[48];
+	for (int i = 0; i < 100000; i++) { snprintf(lab, sizeof lab, "row %06d some label text", i); lt_list_add(L, lab, i); }
+	int cur = 0;
+	BENCH("list 100k draw + cursor step", 2000, { lt_list_set_cursor(L, cur = (cur + 37) % 100000); lt_list_draw(L, C, r, &TH, true); });
+	BENCH("list 100k filter \"99\"", 20, lt_list_filter(L, "99"));
+	BENCH("list 100k filter cleared", 20, lt_list_filter(L, ""));
+	/* a whole frame: list draw, then diff against the previous frame, which is what reaches the terminal */
+	lt_canvas_copy(P, C);
+	BENCH("frame: list scroll + diff", 2000, { lt_list_set_cursor(L, cur = (cur + 1) % 100000); lt_list_draw(L, C, r, &TH, true); char *s = lt_canvas_diff(C, P, 0, &n); free(s); lt_canvas_copy(P, C); });
+	lt_list_free(L);
 	return 0;
 }
