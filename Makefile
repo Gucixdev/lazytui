@@ -39,13 +39,12 @@ build/san/%.o: src/%.c $(HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(SAN) $(CFLAGS) $(INC) -c -o $@ $<
 
-# every test under AddressSanitizer + UBSan (LT_FUZZ=1 for the exhaustive robust run); leak check only for test_robust
+# every test under AddressSanitizer + UBSan (LT_FUZZ=1 for the exhaustive robust run); LeakSanitizer on for all
 test: $(SANOBJ)
 	@for t in tests/test_*.c; do \
 		echo "== $$t"; \
 		$(CC) $(SAN) $(CFLAGS) -o build/san/t $$t $(SANOBJ) -lm || exit 1; \
-		case $$t in *robust*) l=1;; *) l=0;; esac; \
-		ASAN_OPTIONS=detect_leaks=$$l build/san/t || exit 1; \
+		ASAN_OPTIONS=detect_leaks=1 build/san/t || exit 1; \
 	done
 
 asan: test
