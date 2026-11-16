@@ -145,6 +145,7 @@ void lt_put(lt_canvas *c, lt_rect clip, int x, int y, uint32_t ch, lt_style st)
 	if (w == 2 && (x + 1 >= c->w || !in_rect(clip, x + 1, y) || (c->has_clip && !in_rect(c->clip, x + 1, y)))) { ch = ' '; w = 1; }
 	struct cell *p = &c->c[y * c->w + x];
 	if (p->ch == 0 && x > 0) c->c[y * c->w + x - 1].ch = ' ';      /* overwriting the right half of a wide char */
+	if (x + w < c->w && p[w].ch == 0) p[w].ch = ' ';               /* ...or its left half: the right half must not stay a skipped cell */
 	p->ch = ch; p->st = st;
 	if (w == 2) { p[1].ch = 0; p[1].st = st; }
 }

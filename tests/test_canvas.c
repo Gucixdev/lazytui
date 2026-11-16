@@ -41,6 +41,12 @@ int main(void)
 	CHECK(lt_canvas_char(c, 0, 0) == 0x4E2D && lt_canvas_char(c, 1, 0) == 0, "a wide glyph's right half is the sentinel 0");
 	lt_put(c, all, 1, 0, 'y', LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));                /* overwriting the right half */
 	CHECK(lt_canvas_char(c, 0, 0) == ' ' && lt_canvas_char(c, 1, 0) == 'y', "overwriting a wide glyph's half clears the other half");
+	lt_put(c, all, 4, 0, 0x4E2D, LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+	lt_put(c, all, 4, 0, 'z', LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+	CHECK(lt_canvas_char(c, 4, 0) == 'z' && lt_canvas_char(c, 5, 0) == ' ', "a narrow glyph over a wide glyph's left half blanks the right half");
+	lt_put(c, all, 7, 0, 0x4E2D, LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+	lt_put(c, all, 6, 0, 0x4E2D, LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+	CHECK(lt_canvas_char(c, 6, 0) == 0x4E2D && lt_canvas_char(c, 7, 0) == 0 && lt_canvas_char(c, 8, 0) == ' ', "a wide glyph over another's left half blanks what is left of it");
 
 	/* no-unicode canvas: unicode drawing characters fall back to ASCII automatically */
 	lt_canvas *nc = lt_canvas_new(6, 1, NOUNI);
