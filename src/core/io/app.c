@@ -135,7 +135,7 @@ static bool parse_line(lt_arena *ar, const char *p, anode *n, char *err, size_t 
 	if (app_kind_ops(n->kind)) known = true;
 	if (!known) { snprintf(err, errn, "line %d: unknown widget kind '%s'", line, n->kind); return false; }
 	for (;;) {
-		while (*p == ' ' || *p == '\t') p++;
+		while (isspace((unsigned char)*p)) p++;                    /* any blank, also the \r of a CRLF file: one left here was an empty attribute, forever */
 		if (!*p || *p == '#') break;
 		const char *ks = p;
 		while (*p && *p != '=' && !isspace((unsigned char)*p)) p++;
@@ -358,7 +358,7 @@ bool lt_app_load(lt_app *a, const char *spec, char *err, size_t errn)
 		line++;
 		int ind = 0;
 		while (ln[ind] == ' ') ind++;
-		bool skip = !ln[ind] || ln[ind] == '#', tab = ln[ind] == '\t', ok = true;
+		bool skip = !ln[ind] || ln[ind] == '#' || (ln[ind] == '\r' && !ln[ind + 1]), tab = ln[ind] == '\t', ok = true;
 		anode *n = NULL;
 		if (!skip && !tab) {
 			n = lt_arena_calloc(ar, sizeof *n);

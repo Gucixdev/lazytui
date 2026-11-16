@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int fails;
 #define CHECK(cond, msg) do { if (!(cond)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, msg); fails++; } } while (0)
@@ -161,6 +162,13 @@ int main(void)
 
 	/* the loader builds the whole tree in one arena: every error path must free it (LeakSanitizer), report the line, and leave the app untouched */
 	lt_app *a4 = lt_app_new();
+	{                                                              /* a CRLF file: the \r was read as an attribute with no name, without end */
+		lt_app *a5 = lt_app_new();
+		alarm(20);
+		CHECK(lt_app_load(a5, "col\r\n\r\n  text text=\"crlf\" size=1\r\n", err, sizeof err), "a spec with CRLF line ends loads");
+		alarm(0);
+		lt_app_free(a5);
+	}
 	CHECK(lt_app_load(a4, "col\n  text text=\"first\" size=1\n", err, sizeof err), err);
 	static const struct { const char *spec, *msg; } bad[] = {
 		{"", "the spec is empty"}, {"# only a comment\n", "the spec is empty"},
