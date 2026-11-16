@@ -134,7 +134,7 @@ void lt_breadcrumbs_path_upto(const lt_breadcrumbs *b, int index, char sep, char
 	for (int i = 0; i <= index && i < b->n; i++) {
 		bool root = i == 0 && !strcmp(b->seg[0], "/");
 		if (root) { if (k + 1 < n) { out[k++] = sep; out[k] = 0; } continue; }
-		if (k > 0 && out[k - 1] != sep && k + 1 < n) out[k++] = sep;
+		if (k > 0 && out[k - 1] != sep && k + 1 < n) { out[k++] = sep; out[k] = 0; }
 		size_t l = strlen(b->seg[i]);
 		if (k + l < n) { memcpy(out + k, b->seg[i], l); k += l; out[k] = 0; }
 	}

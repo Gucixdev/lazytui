@@ -228,6 +228,10 @@ int main(void)
 	char pathbuf[64];
 	lt_breadcrumbs_path_upto(bc, 2, '/', pathbuf, sizeof pathbuf);
 	CHECK(strstr(pathbuf, "home") && strstr(pathbuf, "me"), "path_upto rebuilds a prefix of the path");
+	char small[10];
+	memset(small, 'X', sizeof small);
+	lt_breadcrumbs_path_upto(bc, 3, '/', small, 8);
+	CHECK(memchr(small, 0, 8) != NULL && small[8] == 'X', "path_upto into a buffer that is too small still ends the string inside it");
 	lt_rect bcr = {0, 0, 40, 1};
 	lt_breadcrumbs_draw(bc, c, bcr, &th, true);
 	e = key(LT_K_HOME);
