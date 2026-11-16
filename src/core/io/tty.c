@@ -341,7 +341,13 @@ static int decode(lt_tty *t, lt_event *ev)
 					char *b = malloc(cap);
 					for (;;) {
 						while (t->pos < t->len) {
-							if (t->len - t->pos >= 6 && !memcmp(t->in + t->pos, "\033[201~", 6)) { t->pos += 6; goto done; }
+							size_t rem = t->len - t->pos;
+							if (rem >= 6 && !memcmp(t->in + t->pos, "\033[201~", 6)) { t->pos += 6; goto done; }
+							if (rem < 6 && !memcmp(t->in + t->pos, "\033[201~", rem)) {      /* maybe the end mark, cut by a read: wait for the rest of it */
+								memmove(t->in, t->in + t->pos, rem); t->pos = 0; t->len = rem;
+								if (!fill(t, 500)) { t->pos = t->len; goto done; }
+								continue;
+							}
 							if (len + 1 >= cap) { cap *= 2; b = realloc(b, cap); }
 							b[len++] = (char)t->in[t->pos++];
 						}
@@ -381,9 +387,10 @@ static int decode(lt_tty *t, lt_event *ev)
 		if (c == 127) { t->pos++; ev->key = LT_K_BSPACE; return 1; }
 		if (c == 0) { t->pos++; ev->key = LT_MOD_CTRL | ' '; return 1; }
 		if (c < 32) { t->pos++; ev->key = LT_MOD_CTRL | (c >= 28 ? ("\\]^_"[c - 28]) : ('a' + c - 1)); return 1; }
-		uint32_t r;
-		size_t l = lt_utf8_decode((const char *)s, &r);
-		if (l > 1 && l > n) { if (!fill(t, 25)) { t->pos = t->len; return 0; } continue; }
+		uint32_t r = 0xFFFD;
+		size_t need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1, l = 1;
+		if (need > n && fill(t, 25)) continue;                             /* the rest of a character cut by a read */
+		if (need <= n) l = lt_utf8_decode((const char *)s, &r);            /* never decode past what was read: stale bytes follow */
 		t->pos += l;
 		ev->key = (int)r;
 		return 1;
