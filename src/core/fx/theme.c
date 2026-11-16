@@ -11,8 +11,8 @@
 
 static void set_grad(lt_theme *t, const unsigned *g, int n)
 {
-	t->ngrad = n;
-	for (int i = 0; i < n && i < LT_GRAD_MAX; i++) t->grad[i] = RGBX(g[i]);
+	t->ngrad = n < LT_GRAD_MAX ? n : LT_GRAD_MAX;
+	for (int i = 0; i < t->ngrad; i++) t->grad[i] = RGBX(g[i]);
 }
 
 lt_color lt_theme_ramp(const lt_theme *t, double f)

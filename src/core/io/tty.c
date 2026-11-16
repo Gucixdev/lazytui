@@ -218,7 +218,7 @@ static int decode_csi(lt_tty *t, const unsigned char *s, size_t n, size_t *used,
 			have = false; i++; continue;
 		}
 		if (P.n == 0) P.n = 1;
-		P.v[P.n - 1] = P.v[P.n - 1] * 10 + (s[i] - '0');
+		if (P.v[P.n - 1] < 99999999) P.v[P.n - 1] = P.v[P.n - 1] * 10 + (s[i] - '0');      /* past 8 digits a number is junk: stop growing before int overflows */
 		have = true; i++;
 	}
 	if (i >= n) return -1;

@@ -38,7 +38,8 @@ int main(void)
 {
 	int master, pp[2];
 	char got[1024] = "";
-	size_t len = 0;
+	char term_out[16384] = "";                              /* what the child wrote to its terminal: sanitizer reports land here */
+	size_t len = 0, tlen = 0;
 	if (pipe(pp) < 0) { printf("tty: SKIP (no pipe)\n"); return 0; }
 	setenv("TERM", "xterm-256color", 1);
 	pid_t pid = forkpty(&master, NULL, NULL, NULL);
@@ -57,12 +58,16 @@ int main(void)
 	usleep(3000);
 	type(master, "\xa9", 1);
 	usleep(150000);
+	{ static const char big[] = "\033[99999999999999999999;99999999999999999999A"; type(master, big, sizeof big - 1); }   /* parameters far past int: must neither overflow nor kill the decoder */
+	usleep(150000);
+	type(master, "z", 1);
+	usleep(100000);
 	type(master, "q", 1);
 	for (;;) {
 		struct pollfd q[2] = {{pp[0], POLLIN, 0}, {master, POLLIN, 0}};
 		char junk[4096];
 		if (poll(q, 2, 5000) <= 0) break;
-		if (q[1].revents & POLLIN) { ssize_t jn = read(master, junk, sizeof junk); if (jn > 0 && getenv("LT_TTY_DEBUG")) fwrite(junk, 1, (size_t)jn, stderr); }
+		if (q[1].revents & POLLIN) { ssize_t jn = read(master, junk, sizeof junk); if (jn > 0) { if (getenv("LT_TTY_DEBUG")) fwrite(junk, 1, (size_t)jn, stderr); if (tlen + (size_t)jn < sizeof term_out) { memcpy(term_out + tlen, junk, (size_t)jn); tlen += (size_t)jn; term_out[tlen] = 0; } } }
 		if (q[0].revents & (POLLIN | POLLHUP)) {
 			ssize_t n = read(pp[0], got + len, sizeof got - 1 - len);
 			if (n <= 0) break;
@@ -73,6 +78,8 @@ int main(void)
 	CHECK(strstr(got, "P:abc\n") != NULL, "a paste ends at its end mark even when the mark comes in two reads");
 	CHECK(strstr(got, "K:78\n") != NULL, "the key typed after the paste is a key, not paste text");
 	CHECK(strstr(got, "K:e9\n") != NULL && strstr(got, "K:fffd\n") == NULL, "a character whose bytes come in two reads is one key");
+	CHECK(strstr(got, "K:7a\n") != NULL, "an absurdly long CSI parameter does not overflow, and the next key still arrives");
+	CHECK(strstr(term_out, "runtime error") == NULL && strstr(term_out, "AddressSanitizer") == NULL, "the decoder ran clean under the sanitizers");
 	if (fails) printf("events were:\n%s", got);
 	printf(fails ? "tty: %d failed\n" : "tty: ok\n", fails);
 	return fails != 0;
