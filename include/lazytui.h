@@ -162,6 +162,19 @@ typedef struct lt_snap lt_snap;
 lt_snap *lt_snap_take(const lt_canvas *c, lt_rect r);
 void lt_snap_blit(const lt_snap *s, lt_canvas *c, int x, int y);
 void lt_snap_free(lt_snap *s);
+/* lazy render: draw only what changed and what can be seen.
+ *   lt_visible: does any part of r fall on the canvas and inside its clip? An off-screen widget skips its work.
+ *   a layer remembers the cells a costly widget drew and the key its inputs hashed to:
+ *       if (!lt_layer_begin(l, c, r, key)) { ...draw into r...; lt_layer_end(l, c, r, key); }
+ *   begin returns true when there is nothing to draw (r is off-screen, or the same key was drawn before and is blitted back). end only
+ *   remembers a fully visible rect, so a clipped half-drawing never becomes the cache. Change the key whenever any input changes. */
+bool lt_visible(const lt_canvas *c, lt_rect r);
+typedef struct lt_layer lt_layer;
+lt_layer *lt_layer_new(void);
+void lt_layer_free(lt_layer *l);
+bool lt_layer_begin(lt_layer *l, lt_canvas *c, lt_rect r, uint64_t key);
+void lt_layer_end(lt_layer *l, const lt_canvas *c, lt_rect r, uint64_t key);
+unsigned long lt_layer_hits(const lt_layer *l);                  /* how many times begin blitted instead of letting the caller draw */
 void lt_canvas_copy(lt_canvas *dst, const lt_canvas *src);       /* same size or resizes dst */
 /* a clip rectangle every drawing call respects (in addition to the rect it is given): draw a taller content into a window */
 void lt_canvas_set_clip(lt_canvas *c, lt_rect r);

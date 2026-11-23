@@ -73,6 +73,29 @@ int main(void)
 	CHECK(lt_canvas_char(c, 0, 0) == 's' && lt_canvas_char(c, 3, 0) == 'p', "the snapshot restores exactly what was captured");
 	lt_snap_free(snap);
 
+	/* lazy render: visibility and layers */
+	CHECK(lt_visible(c, (lt_rect){0, 0, 3, 3}) && !lt_visible(c, (lt_rect){50, 0, 3, 3}) && !lt_visible(c, (lt_rect){0, 0, 0, 3}), "an on-screen rect is visible, an off-screen or empty one is not");
+	lt_canvas_set_clip(c, (lt_rect){0, 0, 2, 2});
+	CHECK(lt_visible(c, (lt_rect){1, 1, 5, 5}) && !lt_visible(c, (lt_rect){5, 5, 2, 2}), "the clip narrows what is visible");
+	lt_canvas_reset_clip(c);
+	lt_layer *ly = lt_layer_new();
+	lt_rect lr = {0, 1, 4, 1};
+	int draws = 0;
+	for (int round = 0; round < 3; round++) {
+		lt_fill(c, lr, ' ', LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+		if (!lt_layer_begin(ly, c, lr, 7)) { draws++; lt_text(c, all, 0, 1, "lazy", LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0), 10); lt_layer_end(ly, c, lr, 7); }
+		CHECK(lt_canvas_char(c, 0, 1) == 'l' && lt_canvas_char(c, 3, 1) == 'y', "the layer shows the same cells drawn or cached");
+	}
+	CHECK(draws == 1 && lt_layer_hits(ly) == 2, "the same key is drawn once, then blitted");
+	lt_fill(c, lr, ' ', LT_STYLE(LT_DEFAULT, LT_DEFAULT, 0));
+	CHECK(!lt_layer_begin(ly, c, lr, 8), "a new key draws again");
+	CHECK(lt_layer_begin(ly, c, (lt_rect){40, 0, 2, 1}, 8), "an off-screen layer has nothing to draw");
+	lt_canvas_set_clip(c, (lt_rect){0, 1, 2, 1});
+	lt_layer_end(ly, c, lr, 9);
+	lt_canvas_reset_clip(c);
+	CHECK(!lt_layer_begin(ly, c, lr, 9), "a clipped drawing is never kept as the cache");
+	lt_layer_free(ly);
+
 	/* diff renderer: an unchanged canvas diffs to (almost) nothing; a changed cell appears in the escape sequence and the buffer variant agrees */
 	lt_canvas *prev = lt_canvas_new(10, 4, UNI);
 	lt_canvas_copy(prev, c);

@@ -204,6 +204,8 @@ given. `lt_keybar_hit` maps a click to the hint id. The same look is in the C fz
 
 ## Testing
 
+Lazy render: the diff renderer already writes only changed cells; the layer cache avoids even drawing. `lt_visible(c, r)` says whether any part of r can be seen (canvas bounds and clip), so an off-screen widget skips its work. `lt_layer` keeps the cells of a costly widget under a key hashed from its inputs: `if (!lt_layer_begin(l, c, r, key)) { draw; lt_layer_end(l, c, r, key); }`. A clipped drawing is never cached. Tested in tests/test_canvas.c.
+
 `make test`: solver classics + strength ladder + graceful degradation; layout at every width; springs against the
 closed form; canvas dumps, clipping, ASCII, quantising and diff output; widgets as text snapshots in unicode and
 ASCII; keybar filtering by modifiers. `examples/demo --snapshot W H` prints one frame with no tty.

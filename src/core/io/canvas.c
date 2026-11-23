@@ -127,6 +127,36 @@ void lt_snap_blit(const lt_snap *s, lt_canvas *c, int x0, int y0)
 		}
 }
 void lt_snap_free(lt_snap *s) { if (s) { free(s->c); free(s); } }
+/* ---- lazy render: visibility and cached layers ---- */
+static bool rects_meet(lt_rect a, lt_rect b) { return a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0 && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
+static bool rect_inside(lt_rect r, lt_rect o) { return r.x >= o.x && r.y >= o.y && r.x + r.w <= o.x + o.w && r.y + r.h <= o.y + o.h; }
+static lt_rect view_of(const lt_canvas *c)
+{
+	lt_rect all = {0, 0, c->w, c->h};
+	if (!c->has_clip) return all;
+	int x0 = c->clip.x > 0 ? c->clip.x : 0, y0 = c->clip.y > 0 ? c->clip.y : 0;
+	int x1 = c->clip.x + c->clip.w < c->w ? c->clip.x + c->clip.w : c->w, y1 = c->clip.y + c->clip.h < c->h ? c->clip.y + c->clip.h : c->h;
+	return (lt_rect){x0, y0, x1 > x0 ? x1 - x0 : 0, y1 > y0 ? y1 - y0 : 0};
+}
+bool lt_visible(const lt_canvas *c, lt_rect r) { return rects_meet(r, view_of(c)); }
+
+struct lt_layer { lt_snap *snap; uint64_t key; int w, h; bool valid; unsigned long hits; };
+lt_layer *lt_layer_new(void) { return calloc(1, sizeof(lt_layer)); }
+void lt_layer_free(lt_layer *l) { if (l) { lt_snap_free(l->snap); free(l); } }
+bool lt_layer_begin(lt_layer *l, lt_canvas *c, lt_rect r, uint64_t key)
+{
+	if (!lt_visible(c, r)) return true;
+	if (l->valid && l->key == key && l->w == r.w && l->h == r.h) { lt_snap_blit(l->snap, c, r.x, r.y); l->hits++; return true; }
+	return false;
+}
+void lt_layer_end(lt_layer *l, const lt_canvas *c, lt_rect r, uint64_t key)
+{
+	if (!rect_inside(r, view_of(c))) { l->valid = false; return; }
+	lt_snap_free(l->snap);
+	l->snap = lt_snap_take(c, r);
+	l->key = key; l->w = r.w; l->h = r.h; l->valid = true;
+}
+unsigned long lt_layer_hits(const lt_layer *l) { return l->hits; }
 int lt_canvas_w(const lt_canvas *c) { return c->w; }
 int lt_canvas_h(const lt_canvas *c) { return c->h; }
 const lt_caps *lt_canvas_caps(const lt_canvas *c) { return &c->caps; }
