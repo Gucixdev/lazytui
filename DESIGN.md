@@ -101,6 +101,14 @@ coasts), axial tilt, sun (lambert + sea glint), atmosphere rim and glow, optiona
 false on the far side). `lt_radar`: the ship scope - round face, range rings, bearing ticks, sweep beam with a fading trail, blips that light up
 when the beam passes and decay. `lt_webchart` is the spider chart (the old polygon-grid radar). The same Earth also comes as thin lines (`lt_globe_wire`: graticule, coastlines, outline, braille) and as a flat equirectangular map (`lt_worldmap`: filled with a moving day/night terminator, or wireframe, optional graticule; `lt_worldmap_project` places markers).
 
+## Windows are not widgets
+
+A widget is drawn into the rectangle the layout hands it. A window floats: it owns its rectangle, is drawn last and opaque, can be modal and be
+dragged. They live apart in `src/windows/`: `window.c` (`lt_window`: titled frame + draw/event callbacks, `lt_windows`: the z-order stack,
+modal swallowing, raise on click, drag by the title, Esc closes) and `menu.c` (menu bar, pull-downs, context menus; moved out of `core/io/nav.c`).
+A dropdown's list remains that widget's own popup (`lt_dropdown_draw_popup`): it is part of how the widget works, not a separate thing.
+Draw `lt_windows` after everything else and offer it events first; `LT_W_IGNORED` means the page below may take the event.
+
 ## Scrolling a page
 
 `lt_canvas_set_clip` makes every drawing call respect a window; `lt_scrollview` uses it: `begin` clips and returns where the content goes,

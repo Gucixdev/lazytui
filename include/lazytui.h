@@ -822,7 +822,7 @@ const char *lt_proctable_row_name(const lt_proctable *t, int visible);
 void lt_proctable_draw(lt_proctable *t, lt_canvas *c, lt_rect r, const lt_theme *th, bool focused);
 lt_wres lt_proctable_event(lt_proctable *t, lt_rect r, const lt_event *ev);          /* CHANGED: cursor / sort / tree moved; ACTIVATE: Enter on a leaf, double click */
 
-/* ---- navigation: tabs, breadcrumbs, menus, tree bar -------------------------------------------------------------------------------------
+/* ---- navigation: tabs, breadcrumbs, menus (a window layer, see below), tree bar -------------------------------------------------------------------------------------
  * tabs: a strip of tabs on any side of a pane (lt_tabs_pane says where the content goes); click / arrows / Home / End / wheel switch (CHANGED).
  * breadcrumbs: a path as clickable segments "home > user > dev", the middle collapsed to "..." when it does not fit; click = ACTIVATE that segment.
  * menu: a menu bar (File Edit View ...) whose menus pull down; items have a shortcut label, may be checkable, separators, disabled. Left/Right change
@@ -864,6 +864,43 @@ void lt_menu_close(lt_menu *m);
 void lt_menu_draw_bar(lt_menu *m, lt_canvas *c, lt_rect r, const lt_theme *t);
 void lt_menu_draw_popup(lt_menu *m, lt_canvas *c, const lt_theme *t);              /* call last, over everything */
 lt_wres lt_menu_event(lt_menu *m, lt_rect bar, const lt_event *ev, int canvas_w, int canvas_h);
+
+/* ---- windows: what floats over the widgets (src/windows/) ---------------------------------------------------------------------------------
+ * A widget is drawn into the rectangle the layout hands it; a window owns its rectangle. It is placed centred or at a cell, clamped to the canvas,
+ * drawn opaque with a titled frame, optionally modal (the page below gets no events), dragged by its title row and closed by Esc. The menus above
+ * are windows too (menu.c lives in the same folder); a dropdown's list is that widget's own popup and stays with the widget.
+ * lt_window: draw/event callbacks get the inner rectangle (inside the frame). lt_windows: the stack; draw it last, offer it events first.
+ * lt_windows_event returns LT_W_IGNORED only when no window wanted the event and none is modal, so the page below can take it. */
+typedef struct lt_window lt_window;
+typedef void (*lt_window_draw_fn)(lt_window *w, lt_canvas *c, lt_rect inner, const lt_theme *t, void *user);
+typedef lt_wres (*lt_window_event_fn)(lt_window *w, lt_rect inner, const lt_event *ev, void *user);
+lt_window *lt_window_new(const char *title, int cols, int rows);          /* outer size, frame included; at least 3 x 3 */
+void lt_window_free(lt_window *w);
+void lt_window_set_title(lt_window *w, const char *title);
+void lt_window_set_content(lt_window *w, lt_window_draw_fn draw, lt_window_event_fn on_event, void *user);
+void lt_window_set_modal(lt_window *w, bool modal);
+void lt_window_set_movable(lt_window *w, bool movable);                   /* default on */
+void lt_window_resize(lt_window *w, int cols, int rows);
+void lt_window_open(lt_window *w);                                        /* centred */
+void lt_window_open_at(lt_window *w, int x, int y);
+void lt_window_close(lt_window *w);
+bool lt_window_is_open(const lt_window *w);
+bool lt_window_is_modal(const lt_window *w);
+lt_rect lt_window_rect(const lt_window *w);                               /* as drawn last (clamped); zero before the first draw */
+lt_rect lt_window_inner(const lt_window *w);
+void lt_window_draw(lt_window *w, lt_canvas *c, const lt_theme *t);       /* for a window used on its own, without a stack */
+lt_wres lt_window_event(lt_window *w, const lt_event *ev);                /* Esc closes (LT_W_CLOSED); a click outside is IGNORED */
+
+typedef struct lt_windows lt_windows;
+lt_windows *lt_windows_new(void);
+void lt_windows_free(lt_windows *s);                                      /* frees the stack only, the windows stay the caller's */
+bool lt_windows_add(lt_windows *s, lt_window *w);                         /* on top; adding twice does nothing */
+void lt_windows_remove(lt_windows *s, lt_window *w);
+void lt_windows_raise(lt_windows *s, lt_window *w);
+lt_window *lt_windows_top(const lt_windows *s);                           /* the topmost open window, NULL when none */
+bool lt_windows_modal(const lt_windows *s);                               /* some open window is modal */
+void lt_windows_draw(lt_windows *s, lt_canvas *c, const lt_theme *t);
+lt_wres lt_windows_event(lt_windows *s, const lt_event *ev);
 
 typedef struct lt_treebar lt_treebar;
 lt_treebar *lt_treebar_new(lt_tree *tree);                                         /* the tree is not owned */
