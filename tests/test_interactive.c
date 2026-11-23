@@ -302,6 +302,55 @@ int main(void)
 	lt_mapview_event(&mv, maprect, &base, &e);
 	CHECK(mv.zoom == 1 && mv.clon == 0 && mv.clat == 0, "'0' resets the view");
 
+	/* checkbox list: boxes drawn, Space and a click on the box tick */
+	lt_list *cl = lt_list_new();
+	for (int i = 0; i < 3; i++) { char b[16]; snprintf(b, sizeof b, "opt %d", i); lt_list_add(cl, b, i); }
+	lt_list_set_checkboxes(cl, true);
+	lt_rect cr = {0, 0, 20, 5};
+	lt_canvas_clear(c, th.s[LT_T_TEXT]);
+	lt_list_draw(cl, c, cr, &th, true);
+	{ char *d = lt_canvas_dump(c); CHECK(strstr(d, "[ ] opt 0") != NULL, "an unticked row shows an empty box"); free(d); }
+	e = key(' ');
+	CHECK(lt_list_event(cl, cr, &e) == LT_W_CHANGED && lt_list_marked(cl, 0) && lt_list_marked_count(cl) == 1, "Space ticks the row");
+	e = mouse(LT_K_CLICK, 2, 2);
+	CHECK(lt_list_event(cl, cr, &e) == LT_W_CHANGED && lt_list_marked(cl, 2), "a click on the box ticks that row");
+	e = mouse(LT_K_CLICK, 2, 2);
+	lt_list_event(cl, cr, &e);
+	CHECK(!lt_list_marked(cl, 2), "a second click clears it");
+	lt_canvas_clear(c, th.s[LT_T_TEXT]);
+	lt_list_draw(cl, c, cr, &th, true);
+	{ char *d = lt_canvas_dump(c); CHECK(strstr(d, "[x] opt 0") != NULL, "a ticked row shows [x]"); free(d); }
+	lt_list_set_marked(cl, 1, true);
+	CHECK(lt_list_marked_count(cl) == 2, "set_marked ticks from code");
+	lt_list_free(cl);
+
+	/* checkbox tree: leaves hold ticks, parents show all / some / none and tick everything below */
+	lt_tree *ct = lt_tree_new();
+	lt_tree_set_checkboxes(ct, true);
+	int croot = lt_tree_add(ct, -1, "root", 0), ka = lt_tree_add(ct, croot, "a", 1), kb = lt_tree_add(ct, croot, "b", 2), sub = lt_tree_add(ct, croot, "sub", 3);
+	int kc = lt_tree_add(ct, sub, "c", 4);
+	lt_tree_expand_all(ct, true);
+	CHECK(lt_tree_checked(ct, croot) == 0 && lt_tree_checked_count(ct) == 0, "nothing is ticked at first");
+	lt_tree_set_checked(ct, ka, true);
+	CHECK(lt_tree_checked(ct, croot) == 2 && lt_tree_checked(ct, sub) == 0, "one ticked leaf makes the parent partial");
+	lt_tree_set_checked(ct, croot, true);
+	CHECK(lt_tree_checked(ct, croot) == 1 && lt_tree_checked(ct, kb) == 1 && lt_tree_checked(ct, kc) == 1 && lt_tree_checked_count(ct) == 3, "ticking a parent ticks everything under it");
+	lt_tree_set_checked(ct, kc, false);
+	CHECK(lt_tree_checked(ct, sub) == 0 && lt_tree_checked(ct, croot) == 2, "clearing the last leaf of a branch clears the branch and leaves the parent partial");
+	lt_rect tr2 = {0, 0, 30, 8};
+	lt_canvas_clear(c, th.s[LT_T_TEXT]);
+	lt_tree_draw(ct, c, tr2, &th, true);
+	{ char *d = lt_canvas_dump(c); CHECK(strstr(d, "[-]") != NULL && strstr(d, "[x]") != NULL && strstr(d, "[ ]") != NULL, "the tree shows all three box states"); free(d); }
+	lt_tree_select(ct, croot);
+	e = key(' ');
+	CHECK(lt_tree_event(ct, tr2, &e) == LT_W_CHANGED && lt_tree_checked(ct, croot) == 1, "Space on a partial parent ticks the whole branch");
+	e = key(' ');
+	lt_tree_event(ct, tr2, &e);
+	CHECK(lt_tree_checked(ct, croot) == 0 && lt_tree_checked_count(ct) == 0, "Space on a full parent clears the whole branch");
+	e = key(LT_K_ENTER);
+	CHECK(lt_tree_event(ct, tr2, &e) == LT_W_TOGGLE && !lt_tree_is_expanded(ct, croot), "Enter still expands and collapses in checkbox mode");
+	lt_tree_free(ct);
+
 	lt_canvas_free(c);
 	printf(fails ? "interactive: %d failed\n" : "interactive: ok\n", fails);
 	return fails != 0;

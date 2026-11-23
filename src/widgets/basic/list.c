@@ -80,6 +80,7 @@ struct lt_list {
 	int cursor;                          /* position within shown */
 	int offset;                          /* first visible position */
 	bool multi;
+	bool boxes;                          /* draw "[x]" boxes instead of a dot */
 	char *filter;
 	lt_ptr ptr;
 	bool follow;                         /* the view follows the cursor (false after wheel / drag scrolling) */
@@ -133,6 +134,9 @@ void lt_list_clear(lt_list *l)
 	refilter(l);
 }
 void lt_list_set_multi(lt_list *l, bool m) { l->multi = m; }
+void lt_list_set_checkboxes(lt_list *l, bool on) { l->boxes = on; if (on) l->multi = true; }
+void lt_list_set_marked(lt_list *l, int i, bool on) { if (i >= 0 && i < l->n) l->it[i].marked = on; }
+int lt_list_marked_count(const lt_list *l) { int k = 0; for (int i = 0; i < l->n; i++) k += l->it[i].marked; return k; }
 int lt_list_count(const lt_list *l) { return l->n; }
 int lt_list_shown(const lt_list *l) { return l->nshown; }
 int lt_list_cursor(const lt_list *l) { return l->nshown ? l->shown[lt_clampi(l->cursor, 0, l->nshown - 1)] : -1; }
@@ -177,8 +181,10 @@ void lt_list_draw(lt_list *l, lt_canvas *c, lt_rect r, const lt_theme *t, bool f
 		lt_fill(c, (lt_rect){body.x, body.y + row, body.w, 1}, ' ', st);
 		lt_style ptr = cur ? (focused ? st : t->s[LT_T_ACCENT]) : t->s[LT_T_DIM];
 		if (cur) lt_put(c, all, body.x, body.y + row, uni ? 0x258C : '>', ptr);
-		if (l->multi) lt_put(c, all, body.x + 1, body.y + row, it->marked ? (uni ? 0x25CF : '*') : ' ', cur && focused ? st : t->s[LT_T_ACCENT]);
-		int lx = body.x + (l->multi ? 3 : 2);
+		lt_style mk = cur && focused ? st : t->s[LT_T_ACCENT];
+		if (l->boxes) lt_text(c, all, body.x + 1, body.y + row, it->marked ? "[x]" : "[ ]", mk, 3);
+		else if (l->multi) lt_put(c, all, body.x + 1, body.y + row, it->marked ? (uni ? 0x25CF : '*') : ' ', mk);
+		int lx = body.x + (l->boxes ? 5 : l->multi ? 3 : 2);
 		draw_cell_text(c, all, lx, body.y + row, it->label, st, body.x + body.w - lx);
 	}
 	lt_scrollbar(c, (lt_rect){r.x + r.w - 1, r.y, 1, r.h}, t, l->nshown, l->offset, r.h);
@@ -199,6 +205,11 @@ lt_wres lt_list_event(lt_list *l, lt_rect r, const lt_event *ev)
 			bool dbl = lt_ptr_double(&l->ptr, pos);
 			l->cursor = pos;
 			l->follow = true;
+			if (l->boxes && ev->x >= body.x + 1 && ev->x <= body.x + 3) {            /* the box itself */
+				item *it = &l->it[l->shown[pos]];
+				it->marked = !it->marked;
+				return LT_W_CHANGED;
+			}
 			return dbl ? LT_W_ACTIVATE : (pos != old ? LT_W_CHANGED : LT_W_HANDLED);
 		}
 		return LT_W_IGNORED;

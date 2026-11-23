@@ -122,6 +122,9 @@ for this widget), HANDLED, CHANGED, ACTIVATE (enter / double click), TOGGLE (tre
 - `lt_tree`: expand/collapse, `tree(1)`-style guides, keys (arrows, Right/Left expand/collapse or step in/out, Enter/Space),
   mouse (arrow toggles, label selects, double click toggles/activates, wheel, scrollbar). Row layout is a pure function of
   depth, so hit testing never depends on having drawn.
+- Checkboxes: `lt_list_set_checkboxes` draws `[x]`/`[ ]` per row (Space or a click on the box ticks). `lt_tree_set_checkboxes` does the same for a tree
+  with tri-state parents (`[x]` all, `[-]` some, `[ ]` none): only leaves hold a tick, a parent shows what is under it and ticking it ticks the
+  branch; Space ticks, Enter and the arrows still expand. The single checkbox is `lt_check`.
 - `lt_dropdown`: box + popup opening below or above; modal while open (a click outside closes it); the popup is drawn by its
   own call so it goes over everything.
 - `lt_searchbar_event` + `lt_input`: click puts the cursor, fzf's editing keys, paste.

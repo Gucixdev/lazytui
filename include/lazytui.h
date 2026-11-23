@@ -436,6 +436,10 @@ const char *lt_list_label(const lt_list *l, int item);
 bool lt_list_marked(const lt_list *l, int item);
 void lt_list_filter(lt_list *l, const char *text);                   /* case-insensitive substring; NULL or "" shows all */
 void lt_list_draw(lt_list *l, lt_canvas *c, lt_rect r, const lt_theme *t, bool focused);
+/* checkbox list: every row shows "[x] label" / "[ ] label"; Space or a click on the box toggles it (CHANGED). Implies multi. */
+void lt_list_set_checkboxes(lt_list *l, bool on);
+void lt_list_set_marked(lt_list *l, int item, bool on);
+int lt_list_marked_count(const lt_list *l);
 lt_wres lt_list_event(lt_list *l, lt_rect r, const lt_event *ev);    /* CHANGED: cursor or marks moved; ACTIVATE: enter / double click */
 int lt_list_item_at(const lt_list *l, lt_rect r, int x, int y);      /* item index shown at a canvas cell, -1 if none */
 
@@ -455,6 +459,12 @@ int lt_tree_count(const lt_tree *t);
 void lt_tree_draw(lt_tree *t, lt_canvas *c, lt_rect r, const lt_theme *th, bool focused);
 /* keys: arrows, PgUp/PgDn, Home/End, Right expands (or enters), Left collapses (or goes to the parent), Enter/Space toggles a parent
  * (ACTIVATE on a leaf). Mouse: the arrow toggles, the label selects, a double click toggles/activates, wheel scrolls. */
+/* checkbox tree: every node shows "[x]" (all below ticked), "[-]" (some) or "[ ]". Only leaves hold a tick, a parent shows what is below it;
+ * ticking a parent ticks (or clears) everything under it. Space or a click on the box toggles (CHANGED); Enter and the arrows still expand. */
+void lt_tree_set_checkboxes(lt_tree *t, bool on);
+int lt_tree_checked(const lt_tree *t, int node);                    /* 0 none, 1 all, 2 some (a leaf: 0 or 1) */
+void lt_tree_set_checked(lt_tree *t, int node, bool on);            /* the node and everything under it */
+int lt_tree_checked_count(const lt_tree *t);                        /* ticked leaves */
 lt_wres lt_tree_event(lt_tree *t, lt_rect r, const lt_event *ev);
 int lt_tree_visible(const lt_tree *t);                              /* rows the tree has right now (expanded nodes only) */
 int lt_tree_node_at(const lt_tree *t, lt_rect r, int x, int y);     /* the node drawn at a canvas cell, -1 if none */

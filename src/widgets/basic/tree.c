@@ -3,11 +3,12 @@
  * so hit testing needs no drawing first:  [3 columns per level: "|  " or "   "; the node's own level "|- " / "`- "][arrow][space][label] */
 #include "internal.h"
 
-typedef struct { char *label; int id, parent, depth; bool expanded, has_kids, last; } node;
+typedef struct { char *label; int id, parent, depth; bool expanded, has_kids, last, ticked; } node;
 struct lt_tree {
 	node *n; int count, cap;
 	int *vis; int nvis;                  /* visible node indexes, top to bottom */
 	bool dirty;
+	bool boxes;                          /* checkbox mode */
 	int cursor;                          /* position within vis */
 	int offset;
 	bool follow;
@@ -28,7 +29,7 @@ int lt_tree_add(lt_tree *t, int parent, const char *label, int id)
 	if (parent >= t->count) parent = -1;
 	if (t->count == t->cap) { t->cap = t->cap ? t->cap * 2 : 16; t->n = realloc(t->n, (size_t)t->cap * sizeof *t->n); }
 	int d = parent >= 0 ? t->n[parent].depth + 1 : 0;
-	t->n[t->count] = (node){strdup(label ? label : ""), id, parent, d, false, false, true};
+	t->n[t->count] = (node){strdup(label ? label : ""), id, parent, d, false, false, true, false};
 	if (parent >= 0) t->n[parent].has_kids = true;
 	t->dirty = true;
 	return t->count++;
@@ -112,15 +113,48 @@ void lt_tree_draw(lt_tree *t, lt_canvas *c, lt_rect r, const lt_theme *th, bool 
 		lt_style ar = cur && focused ? st : th->s[LT_T_ACCENT];
 		if (nd->has_kids) lt_put(c, all, x, y, nd->expanded ? (uni ? 0x25BE : 'v') : (uni ? 0x25B8 : '>'), ar);
 		else lt_put(c, all, x, y, uni ? 0xB7 : '-', guide);
-		int lw = body.x + body.w - (x + 2);
+		int lx = x + 2;
+		if (t->boxes) {
+			int ck = lt_tree_checked(t, i);
+			lt_text(c, all, lx, y, ck == 1 ? "[x]" : ck == 2 ? "[-]" : "[ ]", cur && focused ? st : th->s[LT_T_ACCENT], 3);
+			lx += 4;
+		}
+		int lw = body.x + body.w - lx;
 		if (lw > 0) {
 			int w = lt_utf8_width(nd->label);
-			if (w <= lw) lt_text(c, all, x + 2, y, nd->label, st, lw);
-			else { int u = lt_text(c, all, x + 2, y, nd->label, st, lw > 1 ? lw - 1 : 0); lt_put(c, all, x + 2 + u, y, uni ? 0x2026 : '.', st); }
+			if (w <= lw) lt_text(c, all, lx, y, nd->label, st, lw);
+			else { int u = lt_text(c, all, lx, y, nd->label, st, lw > 1 ? lw - 1 : 0); lt_put(c, all, lx + u, y, uni ? 0x2026 : '.', st); }
 		}
 	}
 	lt_scrollbar(c, (lt_rect){r.x + r.w - 1, r.y, 1, r.h}, th, t->nvis, t->offset, r.h);
 }
+
+/* ---- checkboxes: a leaf holds a tick, a parent is what is below it ---- */
+void lt_tree_set_checkboxes(lt_tree *t, bool on) { t->boxes = on; }
+static void sum_leaves(const lt_tree *t, int node, int *on, int *all)
+{
+	for (int i = 0; i < t->count; i++) {
+		if (t->n[i].parent != node) continue;
+		if (t->n[i].has_kids) sum_leaves(t, i, on, all);
+		else { (*all)++; *on += t->n[i].ticked; }
+	}
+}
+int lt_tree_checked(const lt_tree *t, int node)
+{
+	if (node < 0 || node >= t->count) return 0;
+	if (!t->n[node].has_kids) return t->n[node].ticked;
+	int on = 0, all = 0;
+	sum_leaves(t, node, &on, &all);
+	return all == 0 || on == 0 ? 0 : on == all ? 1 : 2;
+}
+void lt_tree_set_checked(lt_tree *t, int node, bool on)
+{
+	if (node < 0 || node >= t->count) return;
+	if (!t->n[node].has_kids) { t->n[node].ticked = on; return; }
+	for (int i = 0; i < t->count; i++) if (t->n[i].parent == node) lt_tree_set_checked(t, i, on);
+}
+int lt_tree_checked_count(const lt_tree *t) { int k = 0; for (int i = 0; i < t->count; i++) k += !t->n[i].has_kids && t->n[i].ticked; return k; }
+static lt_wres tick(lt_tree *t, int i) { lt_tree_set_checked(t, i, lt_tree_checked(t, i) != 1); return LT_W_CHANGED; }
 
 static lt_wres toggle(lt_tree *t, int i)
 {
@@ -148,6 +182,7 @@ lt_wres lt_tree_event(lt_tree *t, lt_rect r, const lt_event *ev)
 			t->cursor = pos;
 			t->follow = true;
 			int arrow_x = body.x + t->n[i].depth * 3;
+			if (t->boxes && ev->x >= arrow_x + 2 && ev->x <= arrow_x + 4) return tick(t, i);                 /* the box */
 			if (t->n[i].has_kids && ev->x >= arrow_x && ev->x <= arrow_x + 1) return toggle(t, i);       /* the arrow (and the gap after it) */
 			if (dbl) return toggle(t, i);
 			return pos != old ? LT_W_CHANGED : LT_W_HANDLED;
@@ -172,7 +207,8 @@ lt_wres lt_tree_event(lt_tree *t, lt_rect r, const lt_event *ev)
 		if (t->n[i].has_kids && t->n[i].expanded) return toggle(t, i);
 		if (t->n[i].parent >= 0) for (int k = 0; k < t->nvis; k++) if (t->vis[k] == t->n[i].parent) t->cursor = k;
 		break;
-	case LT_K_ENTER: case ' ': return toggle(t, i);
+	case ' ': return t->boxes ? tick(t, i) : toggle(t, i);
+	case LT_K_ENTER: return toggle(t, i);
 	default: return LT_W_IGNORED;
 	}
 	t->offset = lt_scroll_to(t->offset, t->cursor, r.h, t->nvis);
